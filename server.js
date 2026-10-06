@@ -45,18 +45,23 @@ async function binaryOperation(body, searchMode = false) {
 function absolute(p) { if (typeof p !== 'string' || !path.isAbsolute(p)) throw Error('An absolute path is required.'); return path.resolve(p); }
 function child(dir, name) { if (typeof name !== 'string' || !name.trim() || name === '.' || name === '..' || /[\\/\x00]/.test(name) || (process.platform === 'win32' && (/[<>:"|?*]/.test(name) || /[. ]$/.test(name) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(name)))) throw Error('Enter a valid file name without slashes or reserved characters.'); return path.join(absolute(dir), name); }
 async function exists(p) { try { await fs.lstat(p); return true; } catch (e) { if (e.code === 'ENOENT') return false; throw e; } }
-async function list(dir) {
+async function list(dir, signal) {
+  const check = () => signal?.throwIfAborted();
+  check();
   dir = absolute(dir);
   const entries = await fs.readdir(dir, { withFileTypes: true });
-  const files = await Promise.all(entries.map(async e => {
+  check(); const files = [];
+  for (let offset = 0; offset < entries.length; offset += 64) {
+    check(); files.push(...await Promise.all(entries.slice(offset, offset + 64).map(async e => {
     try {
       const p = path.join(dir, e.name), s = await fs.lstat(p);
       return { name: e.name, path: p, directory: s.isDirectory(), link: s.isSymbolicLink(), size: s.size, modified: s.mtimeMs, hidden: e.name.startsWith('.'), extension: path.extname(e.name).slice(1).toLowerCase() };
     } catch { return null; }
-  }));
+    }))); check();
+  }
   let disk = null;
   try { const s = await fs.statfs(dir); disk = { free: Number(s.bavail) * Number(s.bsize), total: Number(s.blocks) * Number(s.bsize) }; } catch {}
-  return { path: dir, parent: path.dirname(dir), files: files.filter(Boolean), disk };
+  check(); return { path: dir, parent: path.dirname(dir), files: files.filter(Boolean), disk };
 }
 async function transfer(sources, destination, move) {
   if (!Array.isArray(sources) || !sources.length) throw Error('Choose at least one source.');
@@ -134,7 +139,7 @@ async function api(route, body, options = {}) {
       const roots = process.platform === 'win32' ? (await Promise.all('ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(async c => await exists(c + ':\\') ? c + ':\\' : null))).filter(Boolean) : ['/'];
       return { home: os.homedir(), cwd: options.cwd || process.cwd(), rightPath: options.rightPath, explicitPaths: options.explicitPaths || [], roots, separator: path.sep, platform: process.platform };
     }
-    case '/api/list': return list(body.path);
+    case '/api/list': return list(body.path, options.signal);
     case '/api/details': {
       const p = absolute(body.path), s = await fs.lstat(p);
       const result = { path: p, name: path.basename(p) || p, parent: path.dirname(p), type: s.isSymbolicLink() ? 'Symbolic link' : s.isDirectory() ? 'Folder' : s.isFile() ? 'File' : 'Special item', size: s.size, modified: s.mtimeMs, created: s.birthtimeMs, accessed: s.atimeMs, mode: (s.mode & 0o777).toString(8).padStart(3, '0'), owner: process.platform === 'win32' ? null : { uid: s.uid, gid: s.gid }, hidden: path.basename(p).startsWith('.') };
@@ -208,7 +213,11 @@ function start(port = Number(process.env.PORT) || 3847, options = {}) {
         if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) return reject('ORIGIN_FORBIDDEN', 'This request came from a different website. Open Panevrix directly at its local address.');
         if (req.headers['x-commander-token'] !== token) return reject('SESSION_EXPIRED', 'This app session has expired. Reconnect to the local Panevrix server.');
         let raw = ''; for await (const chunk of req) { raw += chunk; if (Buffer.byteLength(raw) > 3 * MAX_TEXT) throw Error('Request too large.'); }
-        const result = await api(req.url, JSON.parse(raw || '{}'), options); res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(result));
+        const controller = new AbortController();
+        const disconnected = () => { if (!res.writableEnded) controller.abort(); };
+        res.once('close', disconnected);
+        try { const result = await api(req.url, JSON.parse(raw || '{}'), { ...options, signal: controller.signal }); if (!res.destroyed) { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(result)); } }
+        finally { res.removeListener('close', disconnected); }
       } else {
         const url = new URL(req.url, 'http://localhost');
         const files = { '/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css', '/system.css': 'system.css' };
@@ -219,6 +228,7 @@ function start(port = Number(process.env.PORT) || 3847, options = {}) {
         res.setHeader('Cache-Control', 'no-store'); res.end(content);
       }
     } catch (e) {
+      if (res.destroyed) return;
       const message = ['EPERM', 'EACCES'].includes(e.code)
         ? `Access denied${e.path ? `: ${e.path}` : ''}. Grant your account access through system permissions and retry, or choose a writable location. If Panevrix is running in a development sandbox, start it from your own terminal. Protected system folders may require administrator approval.`
         : e.message;

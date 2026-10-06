@@ -10,6 +10,13 @@ test('listing returns real metadata and parent; search discovers nested files', 
   const result = await list(dir); assert.equal(result.parent, path.dirname(dir)); assert.equal(result.files[0].directory, true);
   const found = await search(dir, 'report'); assert.equal(found.files.length, 1); assert.equal(found.files[0].name, 'report.txt');
 });
+test('canceled listings stop queued metadata work and reject pre-canceled requests', async t => {
+  const dir = await fixture(t); await Promise.all(Array.from({ length: 70 }, (_, n) => fs.writeFile(path.join(dir, String(n)), 'x')));
+  const controller = new AbortController(), original = fs.lstat; let calls = 0;
+  t.mock.method(fs, 'lstat', async (...args) => { calls++; controller.abort(); return original(...args); });
+  await assert.rejects(list(dir, controller.signal), e => e.name === 'AbortError'); assert.equal(calls, 64);
+  await assert.rejects(api('/api/list', { path: dir }, { signal: controller.signal }), e => e.name === 'AbortError'); assert.equal(calls, 64);
+});
 test('details report file metadata and immediate folder contents without recursive scanning', async t => {
   const dir = await fixture(t), file = path.join(dir, 'info.txt'), nested = path.join(dir, 'nested');
   await fs.writeFile(file, 'hello'); await fs.mkdir(nested); await fs.writeFile(path.join(nested, 'deep.txt'), 'not counted');

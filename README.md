@@ -124,6 +124,8 @@ npm test
 Tests cover recursive copy/move, collision protection, self-descendant rejection, recycle/restore and restore collision protection, real metadata, recursive search, editor conflict checks, binary rejection, path names, and API authentication/origin enforcement.
 ## Live information panel
 
+Folder navigation and refresh show an indeterminate progress bar and **Cancel** button for each loading panel. Cancel keeps the previous listing and ignores late results. Starting another navigation cancels the previous request for that tab. Metadata is read in bounded batches, so canceled requests stop scheduling further file reads; an already running operating-system filesystem call may finish before the server releases its work.
+
 Click **Information** or press **Ctrl+I** to replace the inactive file panel with details for the cursor item. Move with the arrow keys or select another item to update its path, type, size, dates, link target, and folder contents. When the cursor is on `..`, the panel describes the current folder. Folder counts and sizes cover immediate contents only. **Tab** swaps the active side and moves the information panel to the opposite side. **Ctrl+I** or Close restores the other file panel, keeping its folder and tabs. Copy and move continue to target that saved opposite folder.
 
 ## Editing and access recovery

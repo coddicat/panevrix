@@ -41,8 +41,9 @@ function recordActivity(label, phase, detail = '', duration = 0) {
   state.activity.unshift({ label, phase, detail, duration, at: Date.now() }); state.activity = state.activity.slice(0, 100);
   try { localStorage.setItem('panevrix.activity', JSON.stringify(state.activity)); } catch {}
 }
-async function api(route, data = {}, retried = false) {
-  const response = await fetch('/api/' + route, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Commander-Token': token }, body: JSON.stringify(data) });
+async function api(route, data = {}, retried = false, signal) {
+  signal?.throwIfAborted();
+  const response = await fetch('/api/' + route, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Commander-Token': token }, body: JSON.stringify(data), signal });
   const raw = await response.text(); let result;
   try { result = JSON.parse(raw); } catch { result = { error: response.status === 403 ? 'This app session has expired. Reload Panevrix to reconnect.' : `The server returned an unexpected response (HTTP ${response.status}).`, code: response.status === 403 && raw.trim() === 'Forbidden' ? 'SESSION_EXPIRED' : 'INVALID_RESPONSE' }; }
   if (!response.ok && result.code === 'SESSION_EXPIRED' && !retried) {
@@ -53,12 +54,22 @@ async function api(route, data = {}, retried = false) {
       if (!next || !/^[a-f0-9]{48}$/.test(next)) throw Error('Unable to refresh the Panevrix session. Keep your unsaved text and reload after restarting the server.');
       token = next;
     })().finally(() => { sessionRefresh = null; });
-    await sessionRefresh; return api(route, data, true);
+    await sessionRefresh; return api(route, data, true, signal);
   }
   if (!response.ok) throw Object.assign(Error(result.error || 'Operation failed.'), { code: result.code, path: result.path }); return result;
 }
 let toastTimer;
-function toast(message, error = false) { const e = $('#toast'); e.textContent = message; e.className = 'show' + (error ? ' error' : ''); clearTimeout(toastTimer); toastTimer = setTimeout(() => e.className = '', error ? 7000 : 3500); }
+function toast(message, error = false) {
+  const modal = $('#dialog'), global = $('#toast');
+  let e = global;
+  if (modal.open) {
+    e = $('#dialog-toast', modal);
+    if (!e) { e = document.createElement('div'); e.id = 'dialog-toast'; e.setAttribute('role', 'status'); $('.dialog-actions', modal).before(e); }
+    global.className = '';
+  } else { $('#dialog-toast', modal)?.classList.remove('show'); }
+  e.textContent = message; e.className = 'show' + (error ? ' error' : '');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => e.className = '', error ? 7000 : 3500);
+}
 function status(message) { $('#global-status').textContent = message; }
 function current(p = state.panels[state.active]) { return p.tabs[p.tab]; }
 function tab(path) { return { path, files: [], parent: path, selected: new Set(), cursor: 0, filter: '', sort: 'name', direction: 1, history: [path], historyIndex: 0, disk: null, revision: 0 }; }
@@ -140,22 +151,38 @@ function wirePanel(p, i) {
   $('.tab-add', root).onclick = () => newTab(i);
   $$('[data-sort]', root).forEach(b => b.onclick = () => { const t = current(p); t.direction = t.sort === b.dataset.sort ? -t.direction : 1; t.sort = b.dataset.sort; render(); });
 }
-async function navigate(i, path, addHistory = true) {
-  const p = state.panels[i], t = current(p), revision = ++t.revision;
-  status('Reading folder…');
-  try {
-    const data = await api('list', { path }); if (revision !== t.revision) return false;
-    Object.assign(t, data); t.cursor = 0; t.selected.clear(); t.filter = '';
-    if (addHistory && t.history[t.historyIndex] !== data.path) { t.history = t.history.slice(0, t.historyIndex + 1); t.history.push(data.path); t.historyIndex++; }
-    render(); saveSession(); status('Ready'); return true;
-  } catch (e) { toast(e.message, true); status('Unable to read folder'); return false; }
+const folderLoads = new Map();
+function drawFolderLoads() {
+  const root = $('#folder-loads'); root.hidden = !folderLoads.size;
+  root.innerHTML = [...folderLoads.values()].map((job, n) => `<div class="folder-loading"><div><strong>${job.i ? 'Right' : 'Left'} panel · ${job.refresh ? 'Refreshing' : 'Opening'} folder</strong><span class="folder-loading-path">${escape(job.path)}</span></div><progress aria-label="Reading folder contents"></progress><button class="button" data-cancel-load="${n}">Cancel</button></div>`).join('');
+  const jobs = [...folderLoads.values()];
+  $$('[data-cancel-load]', root).forEach(button => button.onclick = () => {
+    const job = jobs[Number(button.dataset.cancelLoad)];
+    if (folderLoads.get(job.t) !== job) return;
+    job.controller.abort(); job.t.revision++; folderLoads.delete(job.t); drawFolderLoads();
+    status(folderLoads.size ? 'Reading folders…' : 'Folder loading canceled');
+  });
 }
+async function loadFolder(i, path, { refresh: refreshing = false, addHistory = true } = {}) {
+  const p = state.panels[i], t = current(p);
+  folderLoads.get(t)?.controller.abort();
+  const revision = ++t.revision, controller = new AbortController(), job = { t, i, path, refresh: refreshing, controller };
+  folderLoads.set(t, job); drawFolderLoads(); status('Reading folder…');
+  const cursorPath = files(t)[t.cursor]?.path;
+  try {
+    const data = await api('list', { path }, false, controller.signal);
+    if (controller.signal.aborted || revision !== t.revision) return null;
+    Object.assign(t, data);
+    if (refreshing) { t.selected = new Set([...t.selected].filter(path => t.files.some(f => f.path === path))); t.cursor = Math.max(0, files(t).findIndex(f => f.path === cursorPath)); }
+    else { t.cursor = 0; t.selected.clear(); t.filter = ''; }
+    if (!refreshing && addHistory && t.history[t.historyIndex] !== data.path) { t.history = t.history.slice(0, t.historyIndex + 1); t.history.push(data.path); t.historyIndex++; }
+    render(); saveSession(); return true;
+  } catch (e) { if (controller.signal.aborted || revision !== t.revision) return null; toast(e.message, true); return false; }
+  finally { if (folderLoads.get(t) === job) { folderLoads.delete(t); drawFolderLoads(); status(folderLoads.size ? 'Reading folders…' : controller.signal.aborted ? 'Folder loading canceled' : 'Ready'); } }
+}
+async function navigate(i, path, addHistory = true) { return loadFolder(i, path, { addHistory }); }
 async function refresh() {
-  await Promise.all(state.panels.map(async (p, i) => {
-    const t = current(p), cursorPath = files(t)[t.cursor]?.path, revision = ++t.revision;
-    try { const data = await api('list', { path: t.path }); if (revision !== t.revision) return; Object.assign(t, data); t.selected = new Set([...t.selected].filter(path => t.files.some(f => f.path === path))); t.cursor = Math.max(0, files(t).findIndex(f => f.path === cursorPath)); }
-    catch (e) { toast(e.message, true); }
-  })); render(); status('Ready');
+  await Promise.all(state.panels.map((p, i) => loadFolder(i, current(p).path, { refresh: true })));
 }
 async function history(i, delta) { const t = current(state.panels[i]), n = t.historyIndex + delta; if (n < 0 || n >= t.history.length) return; if (await navigate(i, t.history[n], false)) t.historyIndex = n; focusPanel(); }
 async function newTab(i = state.active) { const p = state.panels[i]; p.tabs.push(tab(current(p).path)); p.tab = p.tabs.length - 1; render(); await navigate(i, current(p).path); focusPanel(); }
@@ -170,6 +197,7 @@ function showDialog(title, content, buttons = [], wide = false) {
   $('.dialog-close', dialog).onclick = closeDialog; $('.cancel', dialog).onclick = closeDialog;
   buttons.forEach((b, i) => $(`[data-dialog-button="${i}"]`, dialog).onclick = b.action);
   if (!dialog.open) dialog.showModal();
+  if ($('#toast').classList.contains('show')) toast($('#toast').textContent, $('#toast').classList.contains('error'));
   setTimeout(() => $('input, textarea, .primary', dialog)?.focus(), 0);
 }
 function showOperationError(e) {
@@ -494,7 +522,7 @@ async function init() {
     const session = stored('commander.session', []);
     state.panels = [state.config.cwd, state.config.rightPath || state.config.home].map((path, i) => { const saved = state.config.explicitPaths?.[i] ? null : session[i]; const tabs = saved?.paths?.length ? saved.paths.filter(p => typeof p === 'string').map(tab) : [tab(path)]; return { tabs: tabs.length ? tabs : [tab(path)], tab: Math.min(Math.max(saved?.tab || 0, 0), Math.max(tabs.length - 1, 0)) }; });
     render();
-    await Promise.all(state.panels.map(async (p, i) => { if (!await navigate(i, current(p).path, false)) await navigate(i, state.config.cwd); })); focusPanel();
+    await Promise.all(state.panels.map(async (p, i) => { if (await navigate(i, current(p).path, false) === false) await navigate(i, state.config.cwd); })); focusPanel();
   } catch(e) { status('Connection failed'); toast(e.message, true); }
 }
 setInterval(() => $('#clock').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 1000);
