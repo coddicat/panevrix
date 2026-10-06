@@ -94,7 +94,20 @@ function panelMarkup(p, i) {
   <div class="filterbar"><span>⌕</span><input class="filter-input" aria-label="Filter files" placeholder="Filter files in this folder…" value="${escape(t.filter)}"><span class="filter-count"></span></div>
   <div class="table-head"><button data-sort="name">NAME ${t.sort === 'name' ? (t.direction === 1 ? '↑' : '↓') : ''}</button><button data-sort="size">SIZE ${t.sort === 'size' ? (t.direction === 1 ? '↑' : '↓') : ''}</button><button data-sort="modified">MODIFIED ${t.sort === 'modified' ? (t.direction === 1 ? '↑' : '↓') : ''}</button></div><div class="file-list" role="listbox" aria-label="Files" aria-multiselectable="true"></div><div class="panel-footer"></div><div class="diskbar"><div style="width:${t.disk ? Math.max(0, Math.min(100, 100 * (1 - t.disk.free / t.disk.total))) : 0}%"></div></div></section>`;
 }
-function render() {
+function render(onlyPanel) {
+  if (Number.isInteger(onlyPanel)) {
+    if (state.detailsMode && onlyPanel !== state.active) return;
+    const previous = $(`[data-panel="${onlyPanel}"]`);
+    if (previous) {
+      const focused = previous.contains(document.activeElement), sameFolder = $('.path-input', previous).value === current(state.panels[onlyPanel]).path;
+      const scroll = sameFolder ? $('.file-list', previous).scrollTop : 0;
+      const holder = document.createElement('div'); holder.innerHTML = panelMarkup(state.panels[onlyPanel], onlyPanel);
+      previous.replaceWith(holder.firstElementChild); wirePanel(state.panels[onlyPanel], onlyPanel); renderFiles(onlyPanel);
+      $('.file-list', $(`[data-panel="${onlyPanel}"]`)).scrollTop = scroll;
+      if (focused && onlyPanel === state.active) focusPanel();
+      return;
+    }
+  }
   $('#panels').innerHTML = state.panels.map((p, i) => state.detailsMode && i !== state.active ? detailsMarkup(i) : panelMarkup(p, i)).join('');
   state.panels.forEach((p, i) => { if (!state.detailsMode || i === state.active) { wirePanel(p, i); renderFiles(i); } });
   $('#close-information')?.addEventListener('click', toggleDetails);
@@ -140,16 +153,16 @@ function wirePanel(p, i) {
   $('.up-button', root).onclick = () => navigate(i, current(p).parent);
   $('.back-button', root).onclick = () => history(i, -1);
   $('.drive', root).onchange = e => navigate(i, e.target.value);
-  $('.path-star', root).onclick = () => { const path = current(p).path; state.favorites = state.favorites.includes(path) ? state.favorites.filter(f => f !== path) : [...state.favorites, path]; localStorage.setItem('commander.favorites', JSON.stringify(state.favorites)); render(); };
+  $('.path-star', root).onclick = () => { const path = current(p).path; state.favorites = state.favorites.includes(path) ? state.favorites.filter(f => f !== path) : [...state.favorites, path]; localStorage.setItem('commander.favorites', JSON.stringify(state.favorites)); render(i); };
   $('.filter-input', root).oninput = e => { const t = current(p); t.filter = e.target.value; t.cursor = 0; renderFiles(i); };
   $$('.tab', root).forEach(b => b.onclick = e => {
     const n = Number(b.dataset.tab);
     if (e.target.closest('.tab-close')) { p.tabs.splice(n, 1); p.tab = Math.min(p.tab, p.tabs.length - 1); }
     else p.tab = n;
-    activate(i); render(); saveSession(); focusPanel();
+    activate(i); render(i); saveSession(); focusPanel();
   });
   $('.tab-add', root).onclick = () => newTab(i);
-  $$('[data-sort]', root).forEach(b => b.onclick = () => { const t = current(p); t.direction = t.sort === b.dataset.sort ? -t.direction : 1; t.sort = b.dataset.sort; render(); });
+  $$('[data-sort]', root).forEach(b => b.onclick = () => { const t = current(p); t.direction = t.sort === b.dataset.sort ? -t.direction : 1; t.sort = b.dataset.sort; render(i); });
 }
 const folderLoads = new Map();
 function drawFolderLoads() {
@@ -176,7 +189,7 @@ async function loadFolder(i, path, { refresh: refreshing = false, addHistory = t
     if (refreshing) { t.selected = new Set([...t.selected].filter(path => t.files.some(f => f.path === path))); t.cursor = Math.max(0, files(t).findIndex(f => f.path === cursorPath)); }
     else { t.cursor = 0; t.selected.clear(); t.filter = ''; }
     if (!refreshing && addHistory && t.history[t.historyIndex] !== data.path) { t.history = t.history.slice(0, t.historyIndex + 1); t.history.push(data.path); t.historyIndex++; }
-    render(); saveSession(); return true;
+    if (current(p) === t) render(i); saveSession(); return true;
   } catch (e) { if (controller.signal.aborted || revision !== t.revision) return null; toast(e.message, true); return false; }
   finally { if (folderLoads.get(t) === job) { folderLoads.delete(t); drawFolderLoads(); status(folderLoads.size ? 'Reading folders…' : controller.signal.aborted ? 'Folder loading canceled' : 'Ready'); } }
 }
@@ -185,7 +198,7 @@ async function refresh() {
   await Promise.all(state.panels.map((p, i) => loadFolder(i, current(p).path, { refresh: true })));
 }
 async function history(i, delta) { const t = current(state.panels[i]), n = t.historyIndex + delta; if (n < 0 || n >= t.history.length) return; if (await navigate(i, t.history[n], false)) t.historyIndex = n; focusPanel(); }
-async function newTab(i = state.active) { const p = state.panels[i]; p.tabs.push(tab(current(p).path)); p.tab = p.tabs.length - 1; render(); await navigate(i, current(p).path); focusPanel(); }
+async function newTab(i = state.active) { const p = state.panels[i]; p.tabs.push(tab(current(p).path)); p.tab = p.tabs.length - 1; render(i); await navigate(i, current(p).path); focusPanel(); }
 function toggle(t, file) { if (!file || file.parent) return; t.selected.has(file.path) ? t.selected.delete(file.path) : t.selected.add(file.path); }
 async function openCurrent() { const t = current(), f = files(t)[t.cursor]; if (!f) return; if (f.directory) { await navigate(state.active, f.path); focusPanel(); } else { try { await api('open', { path: f.path }); toast('Opened ' + f.name); } catch(e) { toast(e.message, true); } } }
 const dialog = $('#dialog'); let onDialogClose = null;
@@ -494,7 +507,7 @@ document.addEventListener('keydown', e => {
     else if (key === 'c' || key === 'x') { const sources = selected().map(f => f.path); if (sources.length) { state.clipboard = { sources, move: key === 'x' }; toast(`${sources.length} item(s) ready to ${key === 'x' ? 'move' : 'copy'}`); } }
     else if (key === 'v') { if (state.clipboard) transferDialog(state.clipboard.move, true); else toast('Copy or cut items first.'); }
     else if (key === 't') newTab();
-    else if (key === 'w') { const p = state.panels[i]; if (p.tabs.length > 1) { p.tabs.splice(p.tab, 1); p.tab = Math.min(p.tab, p.tabs.length - 1); render(); saveSession(); focusPanel(); } }
+    else if (key === 'w') { const p = state.panels[i]; if (p.tabs.length > 1) { p.tabs.splice(p.tab, 1); p.tab = Math.min(p.tab, p.tabs.length - 1); render(i); saveSession(); focusPanel(); } }
     else if (key === 'l') { const input = $('.path-input', $(`[data-panel="${i}"]`)); input.focus(); input.select(); }
     else if (key === 'f') $('.filter-input', $(`[data-panel="${i}"]`)).focus();
     else if (key === 'r') refresh();
@@ -511,8 +524,8 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'Enter') openCurrent();
   else if (e.key === 'Backspace') navigate(i, t.parent).then(focusPanel);
   else if (e.key === 'Delete') deleteDialog();
-  else if (e.key === 'Escape') { t.selected.clear(); t.filter = ''; render(); focusPanel(); }
-  else if (e.key.length === 1 && !e.altKey) { t.filter += e.key; t.cursor = Math.min(1, files(t).length - 1); render(); }
+  else if (e.key === 'Escape') { t.selected.clear(); t.filter = ''; render(i); focusPanel(); }
+  else if (e.key.length === 1 && !e.altKey) { t.filter += e.key; t.cursor = Math.min(1, files(t).length - 1); render(i); }
   else handled = false;
   if (handled) e.preventDefault();
 });
