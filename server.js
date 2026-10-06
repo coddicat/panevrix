@@ -135,7 +135,29 @@ async function api(route, body, options = {}) {
       return { home: os.homedir(), cwd: options.cwd || process.cwd(), rightPath: options.rightPath, explicitPaths: options.explicitPaths || [], roots, separator: path.sep, platform: process.platform };
     }
     case '/api/list': return list(body.path);
+    case '/api/details': {
+      const p = absolute(body.path), s = await fs.lstat(p);
+      const result = { path: p, name: path.basename(p) || p, parent: path.dirname(p), type: s.isSymbolicLink() ? 'Symbolic link' : s.isDirectory() ? 'Folder' : s.isFile() ? 'File' : 'Special item', size: s.size, modified: s.mtimeMs, created: s.birthtimeMs, accessed: s.atimeMs, mode: (s.mode & 0o777).toString(8).padStart(3, '0'), owner: process.platform === 'win32' ? null : { uid: s.uid, gid: s.gid }, hidden: path.basename(p).startsWith('.') };
+      if (s.isSymbolicLink()) result.linkTarget = await fs.readlink(p);
+      if (s.isDirectory()) {
+        try { const contents = await list(p); result.contents = { folders: contents.files.filter(f => f.directory).length, files: contents.files.filter(f => !f.directory).length, bytes: contents.files.filter(f => !f.directory).reduce((n, f) => n + f.size, 0), disk: contents.disk }; }
+        catch (e) { result.contentsError = ['EACCES', 'EPERM'].includes(e.code) ? 'Access denied when listing this folder.' : e.message; }
+      }
+      return result;
+    }
     case '/api/system': return systemSnapshot();
+    case '/api/permissions': {
+      let p = absolute(body.path);
+      while (true) { try { await fs.stat(p); break; } catch (e) { if (e.code !== 'ENOENT' || path.dirname(p) === p) throw e; p = path.dirname(p); } }
+      if (process.platform === 'win32') {
+        const literal = value => "'" + value.replace(/'/g, "''") + "'";
+        const script = `$shell = New-Object -ComObject Shell.Application; $folder = $shell.Namespace(${literal(path.dirname(p))}); $item = $folder.ParseName(${literal(path.basename(p))}); if ($null -eq $item) { throw 'Cannot open file properties' }; $item.InvokeVerb('properties')`;
+        await exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true, timeout: 15000 });
+        return { message: 'File Properties opened. Check General → Read-only first. For an access-control restriction, use Security → Edit to grant your account Write access for this item if appropriate, then retry saving here. If Windows asks for administrator approval, approve it in the system dialog. Your unsaved text remains in the editor. If this process is sandboxed, run Panevrix from your own terminal instead.' };
+      }
+      await exec(process.platform === 'darwin' ? 'open' : 'xdg-open', process.platform === 'darwin' ? ['-R', p] : [path.dirname(p)], { timeout: 15000 });
+      return { message: process.platform === 'darwin' ? 'Finder opened. Select the item → Get Info → Sharing & Permissions and grant your account Read & Write access, then retry saving. Your unsaved text remains in the editor.' : 'The containing folder opened. Use the item’s Properties → Permissions to grant your account write access, then retry saving. Your unsaved text remains in the editor.' };
+    }
     case '/api/copy': return transfer(body.sources, body.destination, false);
     case '/api/move': return transfer(body.sources, body.destination, true);
     case '/api/rename': {
@@ -176,13 +198,15 @@ async function api(route, body, options = {}) {
 }
 function start(port = Number(process.env.PORT) || 3847, options = {}) {
   const server = http.createServer(async (req, res) => {
-    if (!/^((127\.0\.0\.1)|(localhost)):\d+$/.test(req.headers.host || '')) { res.writeHead(403); return res.end('Forbidden host'); }
+    const reject = (code, error) => { res.writeHead(403, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify({ code, error })); };
+    if (!/^((127\.0\.0\.1)|(localhost)):\d+$/.test(req.headers.host || '')) return reject('HOST_FORBIDDEN', 'Panevrix only accepts requests through localhost or 127.0.0.1.');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'");
     try {
       if (req.url.startsWith('/api/')) {
-        if (req.method !== 'POST' || req.headers['x-commander-token'] !== token) { res.writeHead(403); return res.end('Forbidden'); }
-        if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) { res.writeHead(403); return res.end('Forbidden'); }
+        if (req.method !== 'POST') return reject('METHOD_FORBIDDEN', 'This operation requires a POST request.');
+        if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}`) return reject('ORIGIN_FORBIDDEN', 'This request came from a different website. Open Panevrix directly at its local address.');
+        if (req.headers['x-commander-token'] !== token) return reject('SESSION_EXPIRED', 'This app session has expired. Reconnect to the local Panevrix server.');
         let raw = ''; for await (const chunk of req) { raw += chunk; if (Buffer.byteLength(raw) > 3 * MAX_TEXT) throw Error('Request too large.'); }
         const result = await api(req.url, JSON.parse(raw || '{}'), options); res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(result));
       } else {
@@ -196,9 +220,9 @@ function start(port = Number(process.env.PORT) || 3847, options = {}) {
       }
     } catch (e) {
       const message = ['EPERM', 'EACCES'].includes(e.code)
-        ? `Access denied${e.path ? `: ${e.path}` : ''}. Panevrix needs permission for this location. Choose a writable folder or start npm start from a normal terminal outside the development sandbox. Protected system folders may require administrator privileges.`
+        ? `Access denied${e.path ? `: ${e.path}` : ''}. Grant your account access through system permissions and retry, or choose a writable location. If Panevrix is running in a development sandbox, start it from your own terminal. Protected system folders may require administrator approval.`
         : e.message;
-      res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: message, code: e.code }));
+      res.writeHead(['EPERM', 'EACCES'].includes(e.code) ? 403 : 400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: message, code: e.code, path: ['EPERM', 'EACCES'].includes(e.code) ? e.path : undefined }));
     }
   });
   server.listen(port, '127.0.0.1', () => console.log(`Panevrix ready at http://127.0.0.1:${server.address().port}`)); return server;

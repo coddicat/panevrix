@@ -122,3 +122,11 @@ npm test
 ```
 
 Tests cover recursive copy/move, collision protection, self-descendant rejection, recycle/restore and restore collision protection, real metadata, recursive search, editor conflict checks, binary rejection, path names, and API authentication/origin enforcement.
+## Live information panel
+
+Click **Information** or press **Ctrl+I** to replace the inactive file panel with details for the cursor item. Move with the arrow keys or select another item to update its path, type, size, dates, link target, and folder contents. When the cursor is on `..`, the panel describes the current folder. Folder counts and sizes cover immediate contents only. **Tab** swaps the active side and moves the information panel to the opposite side. **Ctrl+I** or Close restores the other file panel, keeping its folder and tabs. Copy and move continue to target that saved opposite folder.
+
+## Editing and access recovery
+
+If the local server restarts while an editor is open, Panevrix reconnects automatically and keeps the unsaved text. If saving returns a real filesystem access denial, the editor keeps the text and offers **Grant access in system permissions…**. This launches a local process to open Windows File Properties, reveal the item in macOS Finder, or open its containing folder on Linux. Grant only the access you intend through the operating system’s permission controls, then retry Save. Panevrix does not automatically change ownership or permissions. A sandbox restriction requires starting the app from your own terminal; file permission changes do not bypass a sandbox.
+

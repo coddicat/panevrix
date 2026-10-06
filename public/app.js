@@ -1,20 +1,61 @@
 'use strict';
 const $ = (s, root = document) => root.querySelector(s);
 const $$ = (s, root = document) => [...root.querySelectorAll(s)];
-const token = $('meta[name="commander-token"]').content;
+let token = $('meta[name="commander-token"]').content;
+let sessionRefresh = null;
 const escape = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = n => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(1)} GB`;
 const base = p => p.replace(/[\\/]$/, '').split(/[\\/]/).pop() || p;
 function stored(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } }
 const state = { active: 0, panels: [], config: null, favorites: stored('commander.favorites', []), settings: { hidden: true, directoriesFirst: true, compact: false, systemRefresh: 5000, ...stored('commander.settings', {}) }, clipboard: null, busy: false, commandHistory: [], commandIndex: 0, activity: stored('panevrix.activity', []) };
+state.detailsMode = stored('panevrix.detailsMode', false);
+let detailsRevision = 0, detailsTimer;
+function toggleDetails() {
+  state.detailsMode = !state.detailsMode;
+  localStorage.setItem('panevrix.detailsMode', JSON.stringify(state.detailsMode)); render(); focusPanel();
+}
+function detailsMarkup(i) {
+  return `<section class="panel information-panel" aria-label="${i ? 'Right' : 'Left'} information panel"><div class="panel-label"><strong>INFORMATION</strong><span class="active-mark">FOLLOWS ${state.active ? 'RIGHT' : 'LEFT'} PANEL</span></div><div class="information-toolbar"><span>File & folder details</span><button class="button" id="close-information" title="Restore file panel (Ctrl+I)">Close <kbd>Ctrl+I</kbd></button></div><div id="information-content" class="information-content" aria-live="polite"></div><div class="panel-footer">Move through the active panel to inspect another item.</div></section>`;
+}
+function updateDetails() {
+  clearTimeout(detailsTimer); const revision = ++detailsRevision;
+  if (!state.detailsMode) return;
+  const root = $('#information-content'); if (!root) return;
+  const t = current(), f = files(t)[t.cursor], target = !f || f.parent ? t.path : f.path;
+  root.innerHTML = `<p class="eyebrow">CURRENT FOLDER</p><p class="information-path">${escape(t.path)}</p><p>Loading details…</p>`;
+  detailsTimer = setTimeout(async () => {
+    try {
+      const d = await api('details', { path: target });
+      if (revision !== detailsRevision || !root.isConnected) return;
+      const date = value => value > 0 ? new Date(value).toLocaleString() : 'Unavailable';
+      const rows = [['Name', d.name], ['Full path', d.path], ['Type', d.type], ['Size', d.type === 'Folder' ? 'See direct contents below' : `${fmt(d.size)} (${d.size.toLocaleString()} bytes)`], ['Modified', date(d.modified)], ['Created', date(d.created)], ['Accessed', date(d.accessed)], ['Hidden name', d.hidden ? 'Yes' : 'No']];
+      if (d.owner) rows.push(['Permissions (octal)', d.mode], ['Owner UID / group GID', `${d.owner.uid} / ${d.owner.gid}`]);
+      if (d.linkTarget) rows.push(['Link target', d.linkTarget]);
+      if (d.contents) { rows.push(['Direct folders', d.contents.folders], ['Direct files', d.contents.files], ['Direct file sizes', fmt(d.contents.bytes)]); if (d.contents.disk) rows.push(['Disk available', fmt(d.contents.disk.free)], ['Disk total', fmt(d.contents.disk.total)]); }
+      root.innerHTML = `<p class="eyebrow">CURRENT FOLDER</p><p class="information-path">${escape(t.path)}</p><h2>${escape(d.name)}</h2><span class="local-badge">${escape(d.type)}</span><dl>${rows.map(([label, value]) => `<div class="information-row"><dt>${escape(label)}</dt><dd>${escape(value)}</dd></div>`).join('')}</dl>${d.contents ? '<p class="information-note">Folder counts and sizes cover immediate contents; subfolders are not scanned recursively.</p>' : ''}${d.contentsError ? `<p role="alert">${escape(d.contentsError)}</p>` : ''}`;
+    } catch (e) { if (revision === detailsRevision && root.isConnected) root.innerHTML = `<p class="information-path">${escape(target)}</p><p role="alert">${escape(e.message)}</p>`; }
+  }, 120);
+}
 document.body.classList.toggle('compact', state.settings.compact);
 function recordActivity(label, phase, detail = '', duration = 0) {
   state.activity.unshift({ label, phase, detail, duration, at: Date.now() }); state.activity = state.activity.slice(0, 100);
   try { localStorage.setItem('panevrix.activity', JSON.stringify(state.activity)); } catch {}
 }
-async function api(route, data = {}) {
+async function api(route, data = {}, retried = false) {
   const response = await fetch('/api/' + route, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Commander-Token': token }, body: JSON.stringify(data) });
-  const result = await response.json(); if (!response.ok) throw Object.assign(Error(result.error || 'Operation failed.'), { code: result.code }); return result;
+  const raw = await response.text(); let result;
+  try { result = JSON.parse(raw); } catch { result = { error: response.status === 403 ? 'This app session has expired. Reload Panevrix to reconnect.' : `The server returned an unexpected response (HTTP ${response.status}).`, code: response.status === 403 && raw.trim() === 'Forbidden' ? 'SESSION_EXPIRED' : 'INVALID_RESPONSE' }; }
+  if (!response.ok && result.code === 'SESSION_EXPIRED' && !retried) {
+    if (!sessionRefresh) sessionRefresh = (async () => {
+      const page = await fetch('/', { cache: 'no-store' });
+      if (!page.ok) throw Error('Unable to reconnect to Panevrix. Keep your editor open and restart the local server.');
+      const next = new DOMParser().parseFromString(await page.text(), 'text/html').querySelector('meta[name="commander-token"]')?.content;
+      if (!next || !/^[a-f0-9]{48}$/.test(next)) throw Error('Unable to refresh the Panevrix session. Keep your unsaved text and reload after restarting the server.');
+      token = next;
+    })().finally(() => { sessionRefresh = null; });
+    await sessionRefresh; return api(route, data, true);
+  }
+  if (!response.ok) throw Object.assign(Error(result.error || 'Operation failed.'), { code: result.code, path: result.path }); return result;
 }
 let toastTimer;
 function toast(message, error = false) { const e = $('#toast'); e.textContent = message; e.className = 'show' + (error ? ' error' : ''); clearTimeout(toastTimer); toastTimer = setTimeout(() => e.className = '', error ? 7000 : 3500); }
@@ -43,10 +84,14 @@ function panelMarkup(p, i) {
   <div class="table-head"><button data-sort="name">NAME ${t.sort === 'name' ? (t.direction === 1 ? '↑' : '↓') : ''}</button><button data-sort="size">SIZE ${t.sort === 'size' ? (t.direction === 1 ? '↑' : '↓') : ''}</button><button data-sort="modified">MODIFIED ${t.sort === 'modified' ? (t.direction === 1 ? '↑' : '↓') : ''}</button></div><div class="file-list" role="listbox" aria-label="Files" aria-multiselectable="true"></div><div class="panel-footer"></div><div class="diskbar"><div style="width:${t.disk ? Math.max(0, Math.min(100, 100 * (1 - t.disk.free / t.disk.total))) : 0}%"></div></div></section>`;
 }
 function render() {
-  $('#panels').innerHTML = state.panels.map(panelMarkup).join('');
-  state.panels.forEach((p, i) => { wirePanel(p, i); renderFiles(i); });
+  $('#panels').innerHTML = state.panels.map((p, i) => state.detailsMode && i !== state.active ? detailsMarkup(i) : panelMarkup(p, i)).join('');
+  state.panels.forEach((p, i) => { if (!state.detailsMode || i === state.active) { wirePanel(p, i); renderFiles(i); } });
+  $('#close-information')?.addEventListener('click', toggleDetails);
+  $('#details-toggle').setAttribute('aria-pressed', String(state.detailsMode));
+  updateDetails();
 }
 function renderFiles(i) {
+  if (state.detailsMode && i !== state.active) return;
   const p = state.panels[i], t = current(p), root = $(`[data-panel="${i}"]`), list = $('.file-list', root), all = files(t);
   t.cursor = Math.max(0, Math.min(t.cursor, all.length - 1));
   const scroll = list.scrollTop;
@@ -69,8 +114,10 @@ function renderFiles(i) {
     row.ondblclick = () => { t.cursor = Number(row.dataset.index); activate(i); openCurrent(); };
     row.oncontextmenu = e => { e.preventDefault(); activate(i); t.cursor = Number(row.dataset.index); renderFiles(i); properties(); };
   });
+  if (i === state.active) updateDetails();
 }
 function activate(i) {
+  if (state.detailsMode) { if (state.active !== i) { state.active = i; render(); } return; }
   state.active = i;
   $$('.panel').forEach((root, n) => { root.classList.toggle('active', n === i); $('.active-mark', root).textContent = n === i ? '● ACTIVE' : '○ INACTIVE'; });
 }
@@ -125,18 +172,30 @@ function showDialog(title, content, buttons = [], wide = false) {
   if (!dialog.open) dialog.showModal();
   setTimeout(() => $('input, textarea, .primary', dialog)?.focus(), 0);
 }
+function showOperationError(e) {
+  toast(e.message, true);
+  if (!dialog.open) return;
+  let error = $('#operation-error', dialog);
+  if (!error) { error = document.createElement('p'); error.id = 'operation-error'; error.setAttribute('role', 'alert'); $('.dialog-body', dialog).append(error); }
+  error.textContent = e.message;
+  $('#permission-help', dialog)?.remove();
+  if (!['EPERM', 'EACCES'].includes(e.code) || !e.path) return;
+  const access = document.createElement('button'); access.id = 'permission-help'; access.className = 'button';
+  access.textContent = 'Grant access in system permissions…'; $('.dialog-body', dialog).append(access);
+  access.onclick = async () => {
+    access.disabled = true;
+    try { const help = await api('permissions', { path: e.path }); error.textContent = help.message; }
+    catch (failure) { error.textContent = failure.message; }
+    finally { access.disabled = false; }
+  };
+}
 async function operation(label, fn) {
   if (state.busy) return; state.busy = true; status(label + '…'); document.body.classList.add('busy');
   const began = Date.now(); recordActivity(label, 'Running');
   try { await fn(); recordActivity(label, 'Completed', '', Date.now() - began); closeDialog(); await refresh(); toast(label + ' complete'); }
   catch (e) {
     recordActivity(label, 'Failed', e.message, Date.now() - began);
-    toast(e.message, true);
-    if (dialog.open) {
-      let error = $('#operation-error', dialog);
-      if (!error) { error = document.createElement('p'); error.id = 'operation-error'; error.setAttribute('role', 'alert'); $('.dialog-body', dialog).append(error); }
-      error.textContent = e.message;
-    }
+    showOperationError(e);
     await refresh();
   }
   finally { state.busy = false; document.body.classList.remove('busy'); status('Ready'); }
@@ -266,8 +325,8 @@ async function editor(edit = false) {
   try {
     const data = await api('read', { path: item.path });
     showDialog((edit ? 'Edit · ' : 'View · ') + item.name, `<p>${escape(item.path)} · UTF-8</p><textarea class="editor" id="editor" spellcheck="false" ${edit ? '' : 'readonly'} aria-label="File contents">${escape(data.text)}</textarea>`, edit ? [{ label: 'Save · Ctrl+S', primary: true, action: async () => {
-      try { const result = await api('write', { path: item.path, text: $('#editor').value, modified: data.modified }); data.modified = result.modified; data.text = $('#editor').value; toast('File saved'); await refresh(); }
-      catch (e) { toast(e.message, true); }
+      try { const result = await api('write', { path: item.path, text: $('#editor').value, modified: data.modified }); data.modified = result.modified; data.text = $('#editor').value; $('#operation-error', dialog)?.remove(); $('#permission-help', dialog)?.remove(); toast('File saved'); await refresh(); }
+      catch (e) { showOperationError(e); }
     } }] : [], true);
     const text = $('#editor');
     text.onkeydown = e => { if (e.ctrlKey && e.key.toLowerCase() === 's' && edit) { e.preventDefault(); $('[data-dialog-button="0"]', dialog).click(); } if (e.key === 'Tab' && edit) { e.preventDefault(); text.setRangeText('  ', text.selectionStart, text.selectionEnd, 'end'); } };
@@ -275,7 +334,7 @@ async function editor(edit = false) {
     $('.dialog-close', dialog).onclick = attemptClose; $('.cancel', dialog).onclick = attemptClose;
     dialog.oncancel = e => { if (edit && text.value !== data.text) { e.preventDefault(); attemptClose(); } };
     onDialogClose = () => { dialog.oncancel = null; };
-  } catch(e) { if (!edit && e.code === 'HEX_REQUIRED') return hexViewer(item); toast(e.message, true); }
+  } catch(e) { if (!edit && e.code === 'HEX_REQUIRED') return hexViewer(item); if (['EPERM', 'EACCES'].includes(e.code)) { showDialog('File access required', `<p>${escape(item.path)}</p>`); showOperationError(e); } else toast(e.message, true); }
 }
 function properties() {
   const item = selected()[0]; if (!item) return;
@@ -283,6 +342,7 @@ function properties() {
 }
 function help() {
   const shortcuts = [['Tab', 'Switch the active panel'], ['↑ / ↓ · Home / End', 'Move through files'], ['Page Up / Page Down', 'Move one page'], ['Enter', 'Open folder or default application'], ['Backspace', 'Go to parent folder'], ['Space / Insert', 'Toggle selection and move down'], ['Shift + ↑ / ↓', 'Extend selection'], ['Ctrl + A', 'Select all visible items'], ['Ctrl + C / X / V', 'Copy / cut / paste files'], ['Ctrl + T / W', 'Create / close folder tab'], ['Ctrl + L / F', 'Focus path / filter'], ['Ctrl + R', 'Refresh both panels'], ['Alt + ← / →', 'Back / forward in folder history'], ['Shift + F3', 'Hex / ASCII viewer'], ['Shift + F7', 'Search folder recursively'], ['Shift + Enter', 'File properties'], ['Escape', 'Clear selection and filter'], ['F1 … F10', 'Actions shown in the bottom bar']];
+  shortcuts.splice(12, 0, ['Ctrl + I', 'Toggle live information in the inactive panel']);
   showDialog('At your fingertips', `<p>A familiar two-panel workflow. Select items in the active panel; copy and move target the other panel. Right-click an item to view its properties.</p><div class="shortcut-grid">${shortcuts.map(([key, value]) => `<kbd>${escape(key)}</kbd><span>${escape(value)}</span>`).join('')}</div>`);
 }
 function systemSettings() {
@@ -376,6 +436,7 @@ const buttons = { 'help-button': 'help', 'help-top': 'help', 'new-folder': 'mkdi
 Object.entries(buttons).forEach(([id, action]) => $('#' + id).onclick = () => { if (!state.busy && state.config) actions[action](); });
 $('#hex-view').onclick = () => { if (!state.busy && state.config) actions.hex(); };
 $('#system-monitor').onclick = () => { if (state.config) systemMonitor(); };
+$('#details-toggle').onclick = () => { if (state.config) toggleDetails(); };
 $$('[data-action]').forEach(b => b.onclick = () => { if (!state.busy && state.config) actions[b.dataset.action](); });
 $('#sync').onclick = () => navigate(1 - state.active, current().path);
 $('#clear-output').onclick = () => $('#command-output').textContent = '';
@@ -409,6 +470,7 @@ document.addEventListener('keydown', e => {
     else if (key === 'l') { const input = $('.path-input', $(`[data-panel="${i}"]`)); input.focus(); input.select(); }
     else if (key === 'f') $('.filter-input', $(`[data-panel="${i}"]`)).focus();
     else if (key === 'r') refresh();
+    else if (key === 'i') toggleDetails();
     else handled = false;
   } else if (/^F([1-9]|10)$/.test(e.key)) actions[['help', 'rename', 'view', 'edit', 'copy', 'move', 'mkdir', 'delete', 'settings', 'terminal'][Number(e.key.slice(1)) - 1]]();
   else if (e.key === 'Tab') { activate(1 - i); focusPanel(); }

@@ -10,6 +10,12 @@ test('listing returns real metadata and parent; search discovers nested files', 
   const result = await list(dir); assert.equal(result.parent, path.dirname(dir)); assert.equal(result.files[0].directory, true);
   const found = await search(dir, 'report'); assert.equal(found.files.length, 1); assert.equal(found.files[0].name, 'report.txt');
 });
+test('details report file metadata and immediate folder contents without recursive scanning', async t => {
+  const dir = await fixture(t), file = path.join(dir, 'info.txt'), nested = path.join(dir, 'nested');
+  await fs.writeFile(file, 'hello'); await fs.mkdir(nested); await fs.writeFile(path.join(nested, 'deep.txt'), 'not counted');
+  const details = await api('/api/details', { path: file }); assert.equal(details.type, 'File'); assert.equal(details.size, 5); assert.equal(details.path, file); assert.ok(details.modified > 0);
+  const folder = await api('/api/details', { path: dir }); assert.equal(folder.type, 'Folder'); assert.equal(folder.contents.folders, 1); assert.equal(folder.contents.files, 1); assert.equal(folder.contents.bytes, 5);
+});
 test('copy is recursive, preserves source and refuses collisions; move removes source', async t => {
   const dir = await fixture(t), source = path.join(dir, 'source'), dest = path.join(dir, 'dest'), other = path.join(dir, 'other');
   await fs.mkdir(source); await fs.mkdir(dest); await fs.mkdir(other); await fs.writeFile(path.join(source, 'file.txt'), 'contents');
@@ -39,8 +45,9 @@ test('HTTP server serves application and rejects unauthenticated operations and 
   const server = start(0); await new Promise(r => server.once('listening', r)); t.after(() => new Promise(r => server.close(r)));
   const url = `http://127.0.0.1:${server.address().port}`;
   const html = await (await fetch(url)).text(); assert.match(html, /Panevrix/); const token = html.match(/commander-token" content="([^"]+)"/)[1];
-  assert.equal((await fetch(url + '/api/config', { method: 'POST' })).status, 403);
-  assert.equal((await fetch(url + '/api/config', { method: 'POST', headers: { 'X-Commander-Token': token, Origin: 'https://example.com' } })).status, 403);
+  const expired = await fetch(url + '/api/config', { method: 'POST' }); assert.equal(expired.status, 403); assert.equal((await expired.json()).code, 'SESSION_EXPIRED');
+  const hostile = await fetch(url + '/api/config', { method: 'POST', headers: { 'X-Commander-Token': token, Origin: 'https://example.com' } }); assert.equal(hostile.status, 403); assert.equal((await hostile.json()).code, 'ORIGIN_FORBIDDEN');
+  const invalidMethod = await fetch(url + '/api/config'); assert.equal((await invalidMethod.json()).code, 'METHOD_FORBIDDEN');
   const response = await fetch(url + '/api/config', { method: 'POST', headers: { 'X-Commander-Token': token } }); assert.equal(response.status, 200); assert.ok((await response.json()).roots.length);
   assert.equal((await fetch(url + '/missing')).status, 404);
 });
