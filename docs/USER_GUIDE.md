@@ -62,4 +62,4 @@ Use a writable location and inspect logs before sharing. Output redirection hide
 
 ## Shell commands
 
-F10 opens the command bar. Each command runs in a fresh PowerShell process on Windows or `/bin/sh` on macOS/Linux, in the active folder. Output is bounded to 2 MB and execution to 30 seconds. Interactive input, persistent shell state, streaming command output and command cancellation are not supported. A running status indicator is shown until completion. Commands inherit your account's permissions.
+F10 opens the command bar. Each command runs in a fresh PowerShell process on Windows or `/bin/sh` on macOS/Linux, in the active folder. Output is bounded to 2 MB and execution to 30 seconds. Interactive input, persistent shell state, streaming command output and command cancellation are not supported. An indeterminate progress bar and running status are shown until completion. Filename search also shows indeterminate progress while results are gathered. Commands inherit your account's permissions.

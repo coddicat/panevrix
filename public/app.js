@@ -544,7 +544,7 @@ async function trash() {
 function searchDialog() {
   const path = current().path;
   showDialog('Find files', `<p>Search names in ${escape(path)} and its subfolders.</p><label class="field">File or folder name<input id="search-query" placeholder="e.g. report, .png, package"></label><div id="search-results"></div>`, [{ label: 'Search', primary: true, action: async () => {
-    const button = $('[data-dialog-button="0"]', dialog), results = $('#search-results'); button.disabled = true; results.textContent = 'Searching…';
+    const button = $('[data-dialog-button="0"]', dialog), results = $('#search-results'); button.disabled = true; results.innerHTML = '<p>Searching…</p><progress aria-label="Filename search in progress"></progress>';
     try {
       const data = await api('search', { path, query: $('#search-query').value });
       if (!dialog.open || !results.isConnected) return;
@@ -570,11 +570,11 @@ $('#clear-output').onclick = () => $('#command-output').textContent = '';
 $('#command-form').onsubmit = async e => {
   e.preventDefault(); if (state.busy) return; const input = $('#command-input'), command = input.value; if (!command.trim()) return;
   const path = current().path; state.commandHistory.push(command); state.commandIndex = state.commandHistory.length; input.value = ''; state.busy = true;
-  const output = $('#command-output'); output.textContent += '\n' + path + ' ❯ ' + command + '\n'; status('Running command…');
+  const output = $('#command-output'); output.textContent += '\n' + path + ' ❯ ' + command + '\n'; status('Running command…'); $('#command-progress').hidden = false;
   const began = Date.now(); recordActivity('Shell command', 'Running', command);
   try { const result = await api('command', { path, command }); output.textContent += result.output || '(no output)'; recordActivity('Shell command', result.success === false ? 'Failed' : 'Completed', command, Date.now() - began); }
   catch(e) { output.textContent += e.message; recordActivity('Shell command', 'Failed', e.message, Date.now() - began); }
-  finally { state.busy = false; output.scrollTop = output.scrollHeight; await refresh(); input.focus(); }
+  finally { $('#command-progress').hidden = true; state.busy = false; output.scrollTop = output.scrollHeight; await refresh(); input.focus(); }
 };
 $('#command-input').onkeydown = e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); state.commandIndex = Math.max(0, Math.min(state.commandHistory.length, state.commandIndex + (e.key === 'ArrowUp' ? -1 : 1))); e.target.value = state.commandHistory[state.commandIndex] || ''; } };
 document.addEventListener('keydown', e => {
