@@ -1,4 +1,6 @@
 * text=auto
 bin/*.js text eol=lf
+bin/*.sh text eol=lf
+bin/*.cmd text eol=crlf
 *.yml text eol=lf
 *.md text eol=lf
