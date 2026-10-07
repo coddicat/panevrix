@@ -1,18 +1,19 @@
 {
   "name": "panevrix",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Keyboard-first dual-panel local file manager with hex and ASCII viewing",
   "license": "MIT",
   "repository": { "type": "git", "url": "git+https://github.com/coddicat/panevrix.git" },
   "homepage": "https://github.com/coddicat/panevrix#readme",
   "bugs": { "url": "https://github.com/coddicat/panevrix/issues" },
   "bin": { "panevrix": "bin/panevrix.js" },
-  "files": ["bin/", "lib/", "server.js", "public/", "LICENSE", "README.md"],
+  "files": ["bin/", "lib/", "server.js", "public/", "LICENSE", "README.md", "docs/", "SECURITY.md", "CONTRIBUTING.md", "CHANGELOG.md", "PUBLISHING.md"],
   "keywords": ["file-manager", "commander", "dual-pane", "hex-viewer", "cli", "local"],
   "scripts": {
     "start": "node bin/panevrix.js",
     "test": "node --test",
-    "check": "node --check server.js && node --check lib/system.js && node --check bin/panevrix.js && node --check public/app.js",
+    "benchmark": "node scripts/benchmark.js",
+    "check": "node --check server.js && node --check lib/operations.js && node --check lib/logging.js && node --check lib/system.js && node --check bin/panevrix.js && node --check public/app.js",
     "prepack": "npm run check && npm test",
     "postpack": "node scripts/verify-package.js"
   },

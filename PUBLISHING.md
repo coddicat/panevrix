@@ -2,6 +2,8 @@
 
 Public repository: https://github.com/coddicat/panevrix
 
+**Current source: 1.1.0 (unreleased). npm publication is paused. Do not create a release or dispatch publishing until publication is explicitly resumed.**
+
 Every push and pull request runs checks on Windows, Linux, and macOS with Node.js 20, 22, and 24. Publishing a stable GitHub release runs the same checks for its tag, then publishes to npm through `.github/workflows/publish.yml`.
 
 ## Automated npm publishing setup
@@ -21,13 +23,14 @@ No npm token or repository secret is needed. Current npm publisher configuration
 For later releases, increase the version on `main`, push its commit and tag, then publish the matching GitHub release:
 
 ```sh
-npm version patch
+# Version 1.1.0 is already set in the source; commit and push verified changes.
+git tag v1.1.0
 git push origin main
 git push origin --tags
-gh release create v1.0.1 --title "Panevrix 1.0.1" --generate-notes
+gh release create v1.1.0 --title "Panevrix 1.1.0" --generate-notes
 ```
 
-Replace `v1.0.1` with the actual version. The workflow requires a stable `vX.Y.Z` tag matching `package.json` and a commit in `main` history. It tests all nine OS/Node combinations, builds and smoke-tests the archive, publishes with OIDC and provenance, and attaches the archive to the GitHub release. Ordinary pushes and pull requests do not publish. The workflow also supports manual dispatch with an existing tag, for retrying after configuration changes. Published npm versions cannot be reused.
+Replace `v1.1.0` with the actual version. The workflow requires a stable `vX.Y.Z` tag matching `package.json` and a commit in `main` history. It tests all nine OS/Node combinations, builds and smoke-tests the archive, publishes with OIDC and provenance, and attaches the archive to the GitHub release. Ordinary pushes and pull requests do not publish. The workflow also supports manual dispatch with an existing tag, for retrying after configuration changes. Published npm versions cannot be reused.
 
 ## GitHub
 
@@ -51,7 +54,7 @@ npm login
 npx --yes --package=npm@11 npm publish --access public
 ```
 
-Complete npm authentication as prompted. The `prepack` script checks syntax and runs tests before creating the package. `postpack` extracts the generated archive to a temporary folder and verifies the packaged CLI, browser assets, and system monitor API; it uses the standard `tar` utility available on current Windows, macOS, and Linux installations. The package allowlist ships only the CLI, server, system collector, browser assets, license, README, and required package metadata. Tests, GitHub configuration, and local files are excluded.
+Complete npm authentication as prompted. The `prepack` script checks syntax and runs tests before creating the package. `postpack` extracts the generated archive to a temporary folder and verifies the packaged CLI, browser assets, and system monitor API; it uses the standard `tar` utility available on current Windows, macOS, and Linux installations. The package allowlist ships only the CLI, server, library modules, browser assets, portable launchers, license, README, user documentation, and required package metadata. Tests, GitHub configuration, and local files are excluded.
 
 An already-published version cannot be reused. Use `npm version patch`, `npm version minor`, or `npm version major` for subsequent releases, then use the GitHub release workflow described above.
 

@@ -11,6 +11,8 @@ const trashDir = path.join(os.tmpdir(), 'commander-trash');
 const token = crypto.randomBytes(24).toString('hex');
 const MAX_TEXT = 2 * 1024 * 1024;
 const { systemSnapshot } = require('./lib/system');
+const tasks = require('./lib/operations');
+const { log, readLogs } = require('./lib/logging');
 const SEARCH_WINDOW = 8 * 1024 * 1024;
 function byteOffset(value) { if (!Number.isSafeInteger(value) || value < 0) throw Error('Offset must be a nonnegative safe integer.'); return value; }
 async function binaryOperation(body, searchMode = false) {
@@ -63,30 +65,7 @@ async function list(dir, signal) {
   try { const s = await fs.statfs(dir); disk = { free: Number(s.bavail) * Number(s.bsize), total: Number(s.blocks) * Number(s.bsize) }; } catch {}
   check(); return { path: dir, parent: path.dirname(dir), files: files.filter(Boolean), disk };
 }
-async function transfer(sources, destination, move) {
-  if (!Array.isArray(sources) || !sources.length) throw Error('Choose at least one source.');
-  destination = absolute(destination);
-  if (!(await fs.stat(destination)).isDirectory()) throw Error('Destination must be a folder.');
-  const pairs = [];
-  for (const source of sources) {
-    const src = absolute(source), dest = path.join(destination, path.basename(src));
-    const realSrc = await fs.realpath(src), realDestination = await fs.realpath(destination);
-    const rel = path.relative(realSrc, realDestination);
-    if (rel === '' || (!rel.startsWith('..' + path.sep) && rel !== '..' && !path.isAbsolute(rel))) throw Error('A folder cannot be placed inside itself.');
-    if (await exists(dest)) throw Error(`“${path.basename(dest)}” already exists at the destination. Rename it or choose another folder.`);
-    if (pairs.some(p => p.dest === dest)) throw Error('Multiple sources have the same name.');
-    pairs.push({ src, dest });
-  }
-  const completed = [];
-  try {
-    for (const { src, dest } of pairs) {
-      if (move) { try { await fs.rename(src, dest); } catch (e) { if (e.code !== 'EXDEV') throw e; await fs.cp(src, dest, { recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true }); await fs.rm(src, { recursive: true }); } }
-      else await fs.cp(src, dest, { recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true });
-      completed.push(dest);
-    }
-  } catch (e) { throw Error(`${e.message}${completed.length ? ` (${completed.length} item(s) completed; remaining items were not processed.)` : ''}`); }
-  return { completed };
-}
+const { transfer } = require('./lib/operations');
 async function recycle(sources) {
   if (!Array.isArray(sources) || !sources.length) throw Error('Choose at least one item.');
   await fs.mkdir(trashDir, { recursive: true });
@@ -149,6 +128,32 @@ async function api(route, body, options = {}) {
         catch (e) { result.contentsError = ['EACCES', 'EPERM'].includes(e.code) ? 'Access denied when listing this folder.' : e.message; }
       }
       return result;
+    }
+    case '/api/tasks': return { tasks: tasks.listJobs() };
+    case '/api/task': return tasks.getJob(body.id);
+    case '/api/task-cancel': return tasks.cancelJob(body.id);
+    case '/api/logs': return { entries: readLogs() };
+    case '/api/task-start': {
+      const runners = {
+        copy: j => transfer(body.sources, body.destination, false, { conflict: body.conflict, signal: j.controller.signal, progress: j }),
+        move: j => transfer(body.sources, body.destination, true, { conflict: body.conflict, signal: j.controller.signal, progress: j }),
+        hash: j => tasks.hashFile(body.path, j.controller.signal, j),
+        compare: j => tasks.compareFiles(body.left, body.right, j.controller.signal, j),
+        folders: async j => {
+          j.phase = 'Reading folders';
+          const [left, right] = await Promise.all([list(body.left, j.controller.signal), list(body.right, j.controller.signal)]);
+          j.controller.signal.throwIfAborted(); j.phase = 'Comparing metadata';
+          const a = new Map(left.files.map(f => [f.name, f])), b = new Map(right.files.map(f => [f.name, f]));
+          const names = [...new Set([...a.keys(), ...b.keys()])].sort(); j.total = names.length; j.bytes = names.length;
+          return { limited: names.length > 5000, count: names.length, entries: names.slice(0, 5000).map(name => {
+            const x = a.get(name), y = b.get(name);
+            const status = !x ? 'Only right' : !y ? 'Only left' : x.directory !== y.directory || x.link !== y.link ? 'Different types' : x.directory ? 'Folders (not recursive)' : x.link ? 'Links (targets not compared)' : x.size !== y.size ? 'Different sizes' : x.modified !== y.modified ? 'Different dates' : 'Same size/date (content unverified)';
+            return { name, status, leftSize: x?.size, rightSize: y?.size };
+          }) };
+        }
+      };
+      if (!Object.hasOwn(runners, body.type)) throw Error('Unknown task type.');
+      return tasks.createJob(body.type, runners[body.type]);
     }
     case '/api/system': return systemSnapshot();
     case '/api/permissions': {
@@ -216,11 +221,11 @@ function start(port = Number(process.env.PORT) || 3847, options = {}) {
         const controller = new AbortController();
         const disconnected = () => { if (!res.writableEnded) controller.abort(); };
         res.once('close', disconnected);
-        try { const result = await api(req.url, JSON.parse(raw || '{}'), { ...options, signal: controller.signal }); if (!res.destroyed) { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(result)); } }
+        try { const began = Date.now(); const result = await api(req.url, JSON.parse(raw || '{}'), { ...options, signal: controller.signal }); if (!['/api/logs', '/api/task', '/api/tasks', '/api/system'].includes(req.url)) log('info', `${req.url} completed in ${Date.now() - began} ms`); if (!res.destroyed) { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(result)); } }
         finally { res.removeListener('close', disconnected); }
       } else {
         const url = new URL(req.url, 'http://localhost');
-        const files = { '/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css', '/system.css': 'system.css' };
+        const files = { '/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css', '/system.css': 'system.css', '/tasks.css': 'tasks.css' };
         if (!files[url.pathname]) { res.writeHead(404); return res.end('Not found'); }
         let content = await fs.readFile(path.join(publicDir, files[url.pathname]));
         if (url.pathname === '/') content = Buffer.from(content.toString().replace('__TOKEN__', token));
@@ -228,6 +233,7 @@ function start(port = Number(process.env.PORT) || 3847, options = {}) {
         res.setHeader('Cache-Control', 'no-store'); res.end(content);
       }
     } catch (e) {
+      log('error', `${req.url.split('?')[0]}: ${e.message}`);
       if (res.destroyed) return;
       const message = ['EPERM', 'EACCES'].includes(e.code)
         ? `Access denied${e.path ? `: ${e.path}` : ''}. Grant your account access through system permissions and retry, or choose a writable location. If Panevrix is running in a development sandbox, start it from your own terminal. Protected system folders may require administrator approval.`
@@ -235,7 +241,7 @@ function start(port = Number(process.env.PORT) || 3847, options = {}) {
       res.writeHead(['EPERM', 'EACCES'].includes(e.code) ? 403 : 400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: message, code: e.code, path: ['EPERM', 'EACCES'].includes(e.code) ? e.path : undefined }));
     }
   });
-  server.listen(port, '127.0.0.1', () => console.log(`Panevrix ready at http://127.0.0.1:${server.address().port}`)); return server;
+  server.listen(port, '127.0.0.1', () => log('info', `Panevrix ready at http://127.0.0.1:${server.address().port}`)); return server;
 }
 if (require.main === module) start();
 module.exports = { list, transfer, recycle, trash, restore, search, api, start };

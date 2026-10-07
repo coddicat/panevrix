@@ -114,30 +114,40 @@ function render(onlyPanel) {
   $('#details-toggle').setAttribute('aria-pressed', String(state.detailsMode));
   updateDetails();
 }
+function fileRowHeight() { return document.body.classList.contains('compact') ? 27 : matchMedia('(min-width:1500px)').matches ? 37 : 34; }
+function ensureCursorVisible(i) {
+  const list = $('.file-list', $(`[data-panel="${i}"]`)), top = current(state.panels[i]).cursor * fileRowHeight();
+  if (top < list.scrollTop) list.scrollTop = top; else if (top + fileRowHeight() > list.scrollTop + list.clientHeight) list.scrollTop = top + fileRowHeight() - list.clientHeight;
+  list.onscroll?.();
+}
 function renderFiles(i) {
   if (state.detailsMode && i !== state.active) return;
   const p = state.panels[i], t = current(p), root = $(`[data-panel="${i}"]`), list = $('.file-list', root), all = files(t);
   t.cursor = Math.max(0, Math.min(t.cursor, all.length - 1));
-  const scroll = list.scrollTop;
-  list.innerHTML = all.map((f, n) => {
-    const [type, symbol] = icon(f);
-    return `<div class="file-row ${n === t.cursor ? 'cursor' : ''} ${t.selected.has(f.path) ? 'selected' : ''}" data-index="${n}" role="option" aria-selected="${t.selected.has(f.path)}" title="${escape(f.path)}"><div class="file-name"><span class="file-icon ${type}">${symbol}</span><span class="name-text">${escape(f.name)}</span>${t.selected.has(f.path) ? '<span class="selection-check">✓</span>' : ''}</div><span class="file-size ${f.directory ? 'directory' : ''}">${f.parent ? '' : f.directory ? '&lt;DIR&gt;' : fmt(f.size)}</span><span class="file-date">${f.parent ? '' : new Date(f.modified).toLocaleDateString(undefined, { month: 'short', day: '2-digit', year: 'numeric' })}</span></div>`;
-  }).join('') + (all.length === 1 ? `<div class="empty-state"><strong>${t.filter ? 'No matching files' : 'A little room to create.'}</strong>${t.filter ? 'Try another filter or press Escape to clear it.' : 'This folder is empty. Create a folder with F7 or add a new file.'}</div>` : '');
-  list.scrollTop = scroll;
   $('.filter-count', root).textContent = `${all.length - 1} items`;
   const total = t.files.filter(f => !f.directory).reduce((s, f) => s + f.size, 0), chosen = t.files.filter(f => t.selected.has(f.path));
   $('.panel-footer', root).innerHTML = `<span>${t.files.filter(f => f.directory).length} folders, ${t.files.filter(f => !f.directory).length} files <span class="selection-total">${chosen.length ? ` · ${chosen.length} selected (${fmt(chosen.filter(f => !f.directory).reduce((s, f) => s + f.size, 0))})` : ` · ${fmt(total)}`}</span></span><span class="free-space">${t.disk ? fmt(t.disk.free) + ' free' : ''}</span>`;
-  $$('.file-row', list).forEach(row => {
-    row.onclick = e => {
-      activate(i); const n = Number(row.dataset.index);
-      if (e.shiftKey) { for (let j = Math.min(n, t.cursor); j <= Math.max(n, t.cursor); j++) if (!all[j].parent) t.selected.add(all[j].path); }
-      else if (e.ctrlKey || e.metaKey) toggle(t, all[n]);
-      else t.selected.clear();
-      t.cursor = n; renderFiles(i); root.focus({ preventScroll: true });
-    };
-    row.ondblclick = () => { t.cursor = Number(row.dataset.index); activate(i); openCurrent(); };
-    row.oncontextmenu = e => { e.preventDefault(); activate(i); t.cursor = Number(row.dataset.index); renderFiles(i); properties(); };
-  });
+  function drawWindow() {
+    const height = fileRowHeight(), scroll = Math.min(list.scrollTop, Math.max(0, all.length * height - list.clientHeight)), start = Math.max(0, Math.floor(scroll / height) - 12), end = Math.min(all.length, start + Math.ceil(list.clientHeight / height) + 25);
+    list.innerHTML = `<div aria-hidden="true" style="height:${start * height}px"></div>` + all.slice(start, end).map((f, index) => {
+      const n = start + index;
+      const [type, symbol] = icon(f);
+      return `<div class="file-row ${n === t.cursor ? 'cursor' : ''} ${t.selected.has(f.path) ? 'selected' : ''}" data-index="${n}" role="option" aria-selected="${t.selected.has(f.path)}" title="${escape(f.path)}"><div class="file-name"><span class="file-icon ${type}">${symbol}</span><span class="name-text">${escape(f.name)}</span>${t.selected.has(f.path) ? '<span class="selection-check">✓</span>' : ''}</div><span class="file-size ${f.directory ? 'directory' : ''}">${f.parent ? '' : f.directory ? '&lt;DIR&gt;' : fmt(f.size)}</span><span class="file-date">${f.parent ? '' : new Date(f.modified).toLocaleDateString(undefined, { month: 'short', day: '2-digit', year: 'numeric' })}</span></div>`;
+    }).join('') + `<div aria-hidden="true" style="height:${(all.length - end) * height}px"></div>` + (all.length === 1 ? `<div class="empty-state"><strong>${t.filter ? 'No matching files' : 'A little room to create.'}</strong>${t.filter ? 'Try another filter or press Escape to clear it.' : 'This folder is empty. Create a folder with F7 or add a new file.'}</div>` : '');
+    list.scrollTop = scroll;
+    $$('.file-row', list).forEach(row => {
+      row.onclick = e => {
+        activate(i); const n = Number(row.dataset.index);
+        if (e.shiftKey) { for (let j = Math.min(n, t.cursor); j <= Math.max(n, t.cursor); j++) if (!all[j].parent) t.selected.add(all[j].path); }
+        else if (e.ctrlKey || e.metaKey) toggle(t, all[n]);
+        else t.selected.clear();
+        t.cursor = n; renderFiles(i); root.focus({ preventScroll: true });
+      };
+      row.ondblclick = () => { t.cursor = Number(row.dataset.index); activate(i); openCurrent(); };
+      row.oncontextmenu = e => { e.preventDefault(); activate(i); t.cursor = Number(row.dataset.index); renderFiles(i); properties(); };
+    });
+  }
+  drawWindow(); list.onscroll = drawWindow;
   if (i === state.active) updateDetails();
 }
 function activate(i) {
@@ -205,6 +215,7 @@ const dialog = $('#dialog'); let onDialogClose = null;
 dialog.addEventListener('close', () => { const fn = onDialogClose; onDialogClose = null; fn?.(); focusPanel(); });
 function closeDialog() { dialog.close(); }
 function showDialog(title, content, buttons = [], wide = false) {
+  const previousClose = onDialogClose; onDialogClose = null; previousClose?.();
   dialog.className = wide ? 'editor-dialog' : '';
   $('#dialog-content').innerHTML = `<div class="dialog-head"><h2>${escape(title)}</h2><button class="dialog-close" aria-label="Close">×</button></div><div class="dialog-body">${content}</div><div class="dialog-actions"><button class="button cancel">Close</button>${buttons.map((b, i) => `<button class="button ${b.danger ? 'danger ' : ''}${b.primary ? 'primary' : ''}" data-dialog-button="${i}">${escape(b.label)}</button>`).join('')}</div>`;
   $('.dialog-close', dialog).onclick = closeDialog; $('.cancel', dialog).onclick = closeDialog;
@@ -232,6 +243,8 @@ function showOperationError(e) {
 }
 async function operation(label, fn) {
   if (state.busy) return; state.busy = true; status(label + '…'); document.body.classList.add('busy');
+  const busyIndicator = document.createElement('progress'); busyIndicator.setAttribute('aria-label', label + ' in progress');
+  if (dialog.open) { $('.dialog-body', dialog).append(busyIndicator); $$('[data-dialog-button]', dialog).forEach(b => b.disabled = true); }
   const began = Date.now(); recordActivity(label, 'Running');
   try { await fn(); recordActivity(label, 'Completed', '', Date.now() - began); closeDialog(); await refresh(); toast(label + ' complete'); }
   catch (e) {
@@ -239,7 +252,7 @@ async function operation(label, fn) {
     showOperationError(e);
     await refresh();
   }
-  finally { state.busy = false; document.body.classList.remove('busy'); status('Ready'); }
+  finally { busyIndicator.remove(); $$('[data-dialog-button]', dialog).forEach(b => b.disabled = false); state.busy = false; document.body.classList.remove('busy'); status('Ready'); }
 }
 function nameDialog(kind) {
   const t = current(), item = selected()[0]; if (kind === 'rename' && !item) return toast('Choose a file or folder first.');
@@ -250,7 +263,75 @@ function nameDialog(kind) {
 function transferDialog(move = false, clipboard = false) {
   const sources = clipboard ? state.clipboard?.sources : selected().map(f => f.path); if (!sources?.length) return toast('Choose one or more items first.');
   const dest = clipboard ? current().path : current(state.panels[1 - state.active]).path;
-  showDialog(`${move ? 'Move' : 'Copy'} ${sources.length} item${sources.length > 1 ? 's' : ''}`, `<div class="selection-list">${sources.map(p => escape(base(p))).join('<br>')}</div><label class="field">Destination folder<input id="destination-input" value="${escape(dest)}"></label><p>Existing files are preserved. If a name is already in use, choose another destination or rename the item.</p>`, [{ label: move ? 'Move items' : 'Copy items', primary: true, action: () => operation(move ? 'Move' : 'Copy', async () => { await api(move ? 'move' : 'copy', { sources, destination: $('#destination-input').value }); if (clipboard && move) state.clipboard = null; }) }]);
+  showDialog(`${move ? 'Move' : 'Copy'} ${sources.length} item${sources.length > 1 ? 's' : ''}`, `<div class="selection-list">${sources.map(p => escape(base(p))).join('<br>')}</div><label class="field">Destination folder<input id="destination-input" value="${escape(dest)}"></label><label class="field">When a name already exists<select id="conflict-policy"><option value="error">Stop before copying</option><option value="skip">Skip existing names</option><option value="rename">Keep both (numbered name)</option></select></label><p>Existing files are preserved. Closing the progress window keeps the task running; reopen it from Tasks.</p>`, [{ label: move ? 'Move items' : 'Copy items', primary: true, action: () => launchTask({ type: move ? 'move' : 'copy', sources, destination: $('#destination-input').value, conflict: $('#conflict-policy').value }, () => { if (clipboard && move) state.clipboard = null; }) }]);
+}
+async function launchTask(data, completed) {
+  const button = $('[data-dialog-button]', dialog); if (button?.disabled) return; if (button) button.disabled = true;
+  try { const job = await api('task-start', data); observedTasks.set(job.id, 'queued'); taskCallbacks.set(job.id, completed); watchTask(job.id); }
+  catch (e) { showOperationError(e); if (button) button.disabled = false; }
+}
+function taskSummary(job) {
+  const percent = job.total > 0 ? Math.min(100, Math.floor(job.bytes / job.total * 100)) : null;
+  return `<p><strong>${escape(job.phase)}</strong>${percent === null ? '' : ` · ${percent}%`}</p><progress aria-label="Task progress" ${job.total !== null ? `max="${Math.max(1, job.total)}" value="${job.state === 'completed' ? Math.max(1, job.total) : job.bytes}"` : ''}></progress><p>${fmt(job.bytes)}${job.total === null ? ' scanned' : ' / ' + fmt(job.total)}${job.items === null ? '' : ` · ${job.processed} / ${job.items} entries`}</p><p class="task-path">${escape(job.current || '')}</p>`;
+}
+const observedTasks = new Map(), taskCallbacks = new Map();
+async function finishTask(job) {
+  if (observedTasks.get(job.id) === job.state) return;
+  observedTasks.set(job.id, job.state);
+  recordActivity(job.type, job.state, job.error || '', job.finished - job.created);
+  if (job.state === 'completed') taskCallbacks.get(job.id)?.(); taskCallbacks.delete(job.id);
+  toast(`${job.type}: ${job.state}${job.error ? ' · ' + job.error : ''}`, job.state === 'failed');
+  if (['copy', 'move'].includes(job.type)) await refresh();
+}
+async function observeTasks() {
+  try {
+    if (state.config) {
+      const { tasks } = await api('tasks'), active = tasks.filter(j => !j.finished), running = active.find(j => j.state === 'running');
+      $('#tasks-button').innerHTML = `Tasks${active.length ? ` (${active.length})${running?.total > 0 ? ` · ${Math.min(100, Math.floor(running.bytes / running.total * 100))}%` : ''}` : ''} <kbd>Ctrl+J</kbd>`;
+      for (const j of tasks) { if (j.finished && observedTasks.has(j.id) && !['completed', 'failed', 'canceled'].includes(observedTasks.get(j.id))) await finishTask(j); else if (!observedTasks.has(j.id)) observedTasks.set(j.id, j.state); }
+      for (const id of observedTasks.keys()) if (!tasks.some(j => j.id === id)) { observedTasks.delete(id); taskCallbacks.delete(id); }
+    }
+  } catch { /* The next poll reconnects after a transient server interruption. */ }
+  setTimeout(observeTasks, 1000);
+}
+function watchTask(id) {
+  showDialog('Task progress', '<div id="task-progress">Connecting…</div><p>Close this window to continue browsing. Tasks continue while this server is running.</p>', [{ label: 'Cancel task', action: async () => { try { await api('task-cancel', { id }); } catch (e) { showOperationError(e); } } }]);
+  let alive = true, timer; onDialogClose = () => { alive = false; clearTimeout(timer); };
+  async function poll() {
+    try {
+      const job = await api('task', { id }); if (!alive) return;
+      const result = job.result;
+      $('#task-progress', dialog).innerHTML = taskSummary(job) + (job.finished ? `<p>${escape(job.error || (result?.sha256 ? 'SHA-256: ' + result.sha256 : job.type === 'folders' ? `${result.count} names compared.${result.limited ? ' First 5,000 shown.' : ''}` : job.type === 'compare' ? result.identical ? 'The files are byte-for-byte identical.' : `First difference at byte ${result.firstDifference} (0x${result.firstDifference.toString(16)}). Left: ${fmt(result.leftSize)}; right: ${fmt(result.rightSize)}.` : `${result?.completed?.length || 0} item(s) completed; ${result?.skipped?.length || 0} skipped.`))}</p>` : '') + (result?.entries ? `<div class="folder-comparison">${result.entries.map(e => `<div class="info-row"><span>${escape(e.name)}</span><span>${escape(e.status)}</span></div>`).join('')}</div>` : '');
+      const cancel = $('[data-dialog-button="0"]', dialog); cancel.disabled = !job.cancelable; cancel.textContent = job.finished ? 'Task finished' : job.cancelable ? 'Cancel task' : 'Finishing source removal…';
+      if (job.finished) { if (observedTasks.has(job.id)) await finishTask(job); if (job.state === 'failed' && alive) showOperationError(Object.assign(Error(job.error), { code: job.code, path: job.path })); return; }
+      timer = setTimeout(poll, 300);
+    } catch (e) { if (alive) showOperationError(e); }
+  }
+  poll();
+}
+function taskList() {
+  showDialog('Background tasks', '<div id="task-list">Loading…</div><p>Tasks are queued one at a time. Canceling retains completed items and removes the incomplete current copy. Task history is held in memory.</p>');
+  let alive = true, timer; onDialogClose = () => { alive = false; clearTimeout(timer); };
+  async function poll() {
+    try { const data = await api('tasks'); if (!alive) return;
+      $('#task-list').innerHTML = data.tasks.length ? data.tasks.map(j => `<button class="list-choice" data-task="${escape(j.id)}"><span>${escape(j.type)} · ${escape(j.state)}<small>${escape(j.phase)} · ${fmt(j.bytes)}${j.total === null ? '' : ' / ' + fmt(j.total)}</small></span></button>`).join('') : '<p>No tasks yet. Start a copy, move, comparison, or SHA-256 calculation.</p>';
+      $$('[data-task]', dialog).forEach(b => b.onclick = () => watchTask(b.dataset.task)); timer = setTimeout(poll, 1000);
+    } catch (e) { if (alive) showOperationError(e); }
+  } poll();
+}
+function applicationLogs() {
+  showDialog('Application logs', '<p>Live server events from this session. The CLI terminal also shows these logs. Paths and error messages may contain private information.</p><pre id="application-logs" class="application-logs">Loading…</pre>', [], true);
+  let alive = true, timer; onDialogClose = () => { alive = false; clearTimeout(timer); };
+  async function poll() {
+    try { const data = await api('logs'); if (!alive) return; const root = $('#application-logs'); const follow = root.scrollHeight - root.scrollTop - root.clientHeight < 40;
+      root.textContent = data.entries.map(e => `[${e.time}] ${e.level.toUpperCase()} ${e.message}`).join('\n') || 'No events yet.'; if (follow) root.scrollTop = root.scrollHeight; timer = setTimeout(poll, 1000);
+    } catch (e) { if (alive) showOperationError(e); }
+  } poll();
+}
+function compareDialog() {
+  const left = files(current(state.panels[0]))[current(state.panels[0]).cursor], right = files(current(state.panels[1]))[current(state.panels[1]).cursor];
+  showDialog('Compare files or folders', `<p>Compare exact file bytes with bounded memory, or compare immediate folder names, types, sizes, and dates. Folder metadata does not prove equal content.</p><label class="field">Comparison mode<select id="compare-mode"><option value="compare">File contents</option><option value="folders">Current folders (metadata)</option></select></label><label class="field">Left path<input id="compare-left" value="${escape(left && !left.directory ? left.path : '')}"></label><label class="field">Right path<input id="compare-right" value="${escape(right && !right.directory ? right.path : '')}"></label>`, [{ label: 'Compare', primary: true, action: () => launchTask({ type: $('#compare-mode').value, left: $('#compare-left').value, right: $('#compare-right').value }) }]);
+  $('#compare-mode').onchange = e => { $('#compare-left').value = e.target.value === 'folders' ? current(state.panels[0]).path : left && !left.directory ? left.path : ''; $('#compare-right').value = e.target.value === 'folders' ? current(state.panels[1]).path : right && !right.directory ? right.path : ''; };
 }
 function deleteDialog() {
   const items = selected(); if (!items.length) return toast('Choose one or more items first.');
@@ -266,7 +347,7 @@ async function hexViewer(item = selected()[0]) {
   let viewMode = 'hex', loadedPage = initial;
   const hex = n => n.toString(16).toUpperCase().padStart(Math.max(8, size.toString(16).length), '0');
   showDialog('Hex view · ' + item.name, `<p>${escape(item.path)} · ${fmt(size)} · ${size.toLocaleString()} bytes · Read only</p>
-    <div class="byte-view-switch" role="group" aria-label="Byte display mode"><button class="button primary" id="byte-mode-hex" aria-pressed="true">Hex</button><button class="button" id="byte-mode-ascii" aria-pressed="false">ASCII text</button><span>ASCII text preserves line breaks and tabs; other nonprintable bytes appear as dots.</span></div>
+    <div class="byte-view-switch" role="group" aria-label="Byte display mode"><button class="button primary" id="byte-mode-hex" aria-pressed="true">Hex</button><button class="button" id="byte-mode-ascii" aria-pressed="false">ASCII text</button><select id="byte-encoding" aria-label="Text encoding"><option value="ascii">ASCII</option><option value="utf-8">UTF-8</option><option value="utf-16le">UTF-16 LE</option><option value="windows-1252">Windows-1252</option></select><span>Decoded text covers this byte range only; characters split at page boundaries may appear as replacement characters.</span></div>
     <div class="hex-controls"><button class="button" id="hex-first">First</button><button class="button" id="hex-prev">← Previous</button><button class="button" id="hex-next">Next →</button><button class="button" id="hex-last">Last</button><form id="hex-jump-form"><input id="hex-offset" aria-label="Byte offset" placeholder="Offset: 4096 or 0x1000"><button class="button" type="submit">Jump</button></form></div>
     <form id="hex-search-form" class="hex-search"><input id="hex-pattern" aria-label="Hex byte pattern" placeholder="Hex bytes, e.g. DE AD BE EF" maxlength="768"><button class="button primary" id="hex-find" type="submit">Find next</button><button class="button" id="hex-stop" type="button" hidden>Stop</button><span id="hex-search-status" role="status"></span></form>
     <div class="hex-heading"><span>BYTE OFFSET</span><span>HEX · 16 BYTES PER ROW</span><span>ASCII</span></div><div id="hex-data" class="hex-data" tabindex="0" aria-label="Hexadecimal file contents"></div><div id="hex-range" class="hex-range"></div>`, [], true);
@@ -294,6 +375,7 @@ async function hexViewer(item = selected()[0]) {
       }).join('');
       return `<div class="hex-row"><span class="hex-address">${hex(start)}</span><span class="hex-values">${column(false)}</span><span class="hex-ascii">${column(true)}</span></div>`;
     }).join('');
+    if (viewMode === 'ascii' && $('#byte-encoding').value !== 'ascii') dataRoot.textContent = new TextDecoder($('#byte-encoding').value).decode(new Uint8Array(bytes));
     range.textContent = bytes.length ? `0x${hex(offset)} – 0x${hex(offset + bytes.length - 1)} · ${bytes.length.toLocaleString()} bytes loaded of ${size.toLocaleString()}` : '0 bytes';
     $('#hex-first').disabled = $('#hex-prev').disabled = offset === 0;
     $('#hex-next').disabled = $('#hex-last').disabled = offset + pageSize >= size;
@@ -307,6 +389,7 @@ async function hexViewer(item = selected()[0]) {
   }
   $('#byte-mode-hex').onclick = () => switchView('hex');
   $('#byte-mode-ascii').onclick = () => switchView('ascii');
+  $('#byte-encoding').onchange = () => switchView('ascii');
   async function load(value, highlightedOffset = null) {
     const revision = ++pageRevision;
     const requested = Math.floor(Math.max(0, Math.min(value, Math.max(0, size - 1))) / 16) * 16;
@@ -379,7 +462,7 @@ async function editor(edit = false) {
 }
 function properties() {
   const item = selected()[0]; if (!item) return;
-  showDialog('Properties', [['Name', item.name], ['Location', item.path], ['Type', item.directory ? 'Folder' : item.link ? 'Symbolic link' : (item.extension || 'Unknown') + ' file'], ['Size', fmt(item.size) + ' (' + item.size.toLocaleString() + ' bytes)'], ['Modified', new Date(item.modified).toLocaleString()], ['Hidden', item.hidden ? 'Yes' : 'No']].map(([label, value]) => `<div class="info-row"><span>${escape(label)}</span><span>${escape(value)}</span></div>`).join(''), [{ label: 'Open', primary: true, action: () => { closeDialog(); openCurrent(); } }]);
+  showDialog('Properties', [['Name', item.name], ['Location', item.path], ['Type', item.directory ? 'Folder' : item.link ? 'Symbolic link' : (item.extension || 'Unknown') + ' file'], ['Size', fmt(item.size) + ' (' + item.size.toLocaleString() + ' bytes)'], ['Modified', new Date(item.modified).toLocaleString()], ['Hidden', item.hidden ? 'Yes' : 'No']].map(([label, value]) => `<div class="info-row"><span>${escape(label)}</span><span>${escape(value)}</span></div>`).join(''), [...(!item.directory ? [{ label: 'SHA-256', action: () => launchTask({ type: 'hash', path: item.path }) }] : []), { label: 'Open', primary: true, action: () => { closeDialog(); openCurrent(); } }]);
 }
 function help() {
   const shortcuts = [['Tab', 'Switch the active panel'], ['↑ / ↓ · Home / End', 'Move through files'], ['Page Up / Page Down', 'Move one page'], ['Enter', 'Open folder or default application'], ['Backspace', 'Go to parent folder'], ['Space / Insert', 'Toggle selection and move down'], ['Shift + ↑ / ↓', 'Extend selection'], ['Ctrl + A', 'Select all visible items'], ['Ctrl + C / X / V', 'Copy / cut / paste files'], ['Ctrl + T / W', 'Create / close folder tab'], ['Ctrl + L / F', 'Focus path / filter'], ['Ctrl + R', 'Refresh both panels'], ['Alt + ← / →', 'Back / forward in folder history'], ['Shift + F3', 'Hex / ASCII viewer'], ['Shift + F7', 'Search folder recursively'], ['Shift + Enter', 'File properties'], ['Escape', 'Clear selection and filter'], ['F1 … F10', 'Actions shown in the bottom bar']];
@@ -476,6 +559,9 @@ const actions = { help, rename: () => nameDialog('rename'), view: () => editor()
 const buttons = { 'help-button': 'help', 'help-top': 'help', 'new-folder': 'mkdir', 'new-file': 'create', copy: 'copy', move: 'move', rename: 'rename', delete: 'delete', refresh: 'refresh', search: 'search', 'settings-button': 'settings', 'favorites-button': 'favorites', 'trash-button': 'trash', 'terminal-toggle': 'terminal', 'close-terminal': 'terminal' };
 Object.entries(buttons).forEach(([id, action]) => $('#' + id).onclick = () => { if (!state.busy && state.config) actions[action](); });
 $('#hex-view').onclick = () => { if (!state.busy && state.config) actions.hex(); };
+$('#tasks-button').onclick = taskList;
+$('#logs-button').onclick = applicationLogs;
+$('#compare-files').onclick = compareDialog;
 $('#system-monitor').onclick = () => { if (state.config) systemMonitor(); };
 $('#details-toggle').onclick = () => { if (state.config) toggleDetails(); };
 $$('[data-action]').forEach(b => b.onclick = () => { if (!state.busy && state.config) actions[b.dataset.action](); });
@@ -512,15 +598,16 @@ document.addEventListener('keydown', e => {
     else if (key === 'f') $('.filter-input', $(`[data-panel="${i}"]`)).focus();
     else if (key === 'r') refresh();
     else if (key === 'i') toggleDetails();
+    else if (key === 'j') taskList();
     else handled = false;
   } else if (/^F([1-9]|10)$/.test(e.key)) actions[['help', 'rename', 'view', 'edit', 'copy', 'move', 'mkdir', 'delete', 'settings', 'terminal'][Number(e.key.slice(1)) - 1]]();
   else if (e.key === 'Tab') { activate(1 - i); focusPanel(); }
   else if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(e.key)) {
-    const old = t.cursor, page = Math.max(1, Math.floor($('.file-list', $(`[data-panel="${i}"]`)).clientHeight / 34) - 1);
+    const old = t.cursor, page = Math.max(1, Math.floor($('.file-list', $(`[data-panel="${i}"]`)).clientHeight / fileRowHeight()) - 1);
     t.cursor = e.key === 'Home' ? 0 : e.key === 'End' ? all.length - 1 : Math.max(0, Math.min(all.length - 1, old + ({ ArrowUp: -1, ArrowDown: 1, PageUp: -page, PageDown: page }[e.key])));
     if (e.shiftKey) for (let n = Math.min(old, t.cursor); n <= Math.max(old, t.cursor); n++) if (!all[n].parent) t.selected.add(all[n].path);
-    renderFiles(i); $('.file-row.cursor', $(`[data-panel="${i}"]`))?.scrollIntoView({ block: 'nearest' });
-  } else if (e.key === ' ' || e.key === 'Insert') { toggle(t, all[t.cursor]); t.cursor = Math.min(t.cursor + 1, all.length - 1); renderFiles(i); $('.file-row.cursor', $(`[data-panel="${i}"]`))?.scrollIntoView({ block: 'nearest' }); }
+    renderFiles(i); ensureCursorVisible(i);
+  } else if (e.key === ' ' || e.key === 'Insert') { toggle(t, all[t.cursor]); t.cursor = Math.min(t.cursor + 1, all.length - 1); renderFiles(i); ensureCursorVisible(i); }
   else if (e.key === 'Enter') openCurrent();
   else if (e.key === 'Backspace') navigate(i, t.parent).then(focusPanel);
   else if (e.key === 'Delete') deleteDialog();
@@ -540,3 +627,4 @@ async function init() {
 }
 setInterval(() => $('#clock').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 1000);
 init();
+observeTasks();

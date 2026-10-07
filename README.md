@@ -8,7 +8,7 @@ A local, keyboard-first, dual-panel file manager inspired by Norton Commander an
 
 Requires Node.js 20 or newer.
 
-After this package is published to npm:
+The current published npm release can be run with:
 
 ```sh
 npx panevrix@latest
@@ -32,7 +32,7 @@ panevrix --help
 
 Folder arguments accept relative or absolute paths. Quote paths containing spaces. `--port 0` selects a free port; `--no-open` prints the URL without launching a browser. The `PORT` environment variable also sets the default port. Explicit folder arguments override saved tabs for the respective panel. Without arguments, saved tabs are restored; a fresh session opens the current working directory on the left and your home directory on the right.
 
-To run the source before publishing, use `npm start` (or `npm start -- --no-open`). There are no dependencies to install. To check a locally packed release, run `npm pack`, then `npm exec --package ./panevrix-1.0.0.tgz -- panevrix --no-open`.
+Source version **1.1.0 is unreleased**; npm publication is paused. To run the latest source changes, use `npm start` (or `npm start -- --no-open`). There are no dependencies to install. To check a locally packed release, run `npm pack`, then `npm exec --package ./panevrix-1.1.0.tgz -- panevrix --no-open`.
 
 See [PUBLISHING.md](PUBLISHING.md) in the source repository for GitHub and npm release instructions.
 
@@ -43,6 +43,10 @@ If creating folders returns `EPERM` or `EACCES`, check the active panel's path a
 - Two independently navigable panels with folder tabs and back/forward history.
 - Actual filesystem access, directory-first sorting, name/size/date sorting, hidden file preferences, folder filtering, and disk space indicators.
 - Mouse, keyboard, Ctrl-click, and Shift selection; multi-file copy, move, and recoverable deletion.
+- Background copy/move tasks with byte and item progress, cancellation, queued execution, and stop/skip/keep-both conflict policies. Close the progress window and reopen it through Tasks (Ctrl+J).
+- Streamed SHA-256 calculations from Properties, exact byte comparison with the first differing offset, and immediate folder metadata comparison.
+- Virtualized file rows: the browser renders only the visible area plus overscan, preserving keyboard navigation and selection.
+- Live application logs in the CLI terminal and the Application logs window.
 - Folder and empty-file creation, rename, properties, and default-application opening.
 - Copy/cut/paste across panels and tabs. Copy/move dialogs default to the opposite panel.
 - Favorites and tab sessions persisted in browser local storage.
@@ -69,6 +73,8 @@ If creating folders returns `EPERM` or `EACCES`, check the active panel's path a
 | Ctrl + T / W | New / close folder tab |
 | Ctrl + L / F | Focus path / filter |
 | Ctrl + R | Refresh panels |
+| Ctrl + I | Toggle live information in the inactive panel |
+| Ctrl + J | Background tasks |
 | Alt + Left / Right | Back / forward |
 | Shift + F7 | Recursive search |
 | Shift + Enter / right-click | Properties |
@@ -87,7 +93,7 @@ Some browser or operating-system shortcuts can take precedence over function key
 
 ## File safety and scope
 
-Copy/move operations refuse existing destination names, and folders cannot be placed inside themselves. Multi-item operations process sequentially: on an error, completed items remain completed and the remaining items stop. Cross-volume moves copy first, then remove the source.
+Copy/move operations preserve existing destination files. Choose stop (default), skip, or keep both with a numbered name. Folders cannot be placed inside themselves, and overlapping sources are rejected. Tasks run sequentially. On cancellation or failure, completed top-level items stay completed; the current incomplete copy is removed where possible and originals are retained. Cleanup failures identify retained paths. Every move copies first and then removes the source; cancellation is briefly disabled during source removal. A source-removal failure keeps the complete destination copy. See [task safety and recovery](docs/USER_GUIDE.md#tasks-and-recovery) before retrying.
 
 Deletion uses Panevrix's own recovery folder at `commander-trash` under the system temp directory, not the OS Recycle Bin. The internal recovery directory and browser storage keys retain their original names so existing deleted files, tabs, favorites, and preferences remain accessible after the rename. Restore using the sidebar Trash button. Recovery files can be removed by operating-system temporary-file cleanup. No permanent-delete UI is provided.
 
@@ -101,7 +107,7 @@ Select a file and press **Shift+F3** or click **Hex view**. **F3** automatically
 
 Each row shows a byte offset, 16 hexadecimal bytes, and printable ASCII characters; nonprintable bytes appear as dots. Use First/Previous/Next/Last or Page Up/Page Down/Home/End while the byte view is focused. Jump accepts decimal (`4096`) or hexadecimal (`0x1000`) offsets and highlights the requested byte. Ctrl+G focuses Jump and Ctrl+F focuses byte search when the byte view is focused.
 
-Switch **Hex / ASCII text** inside the viewer to read the same chunk as regular ASCII text. ASCII text preserves line breaks and tabs, wraps long lines, and replaces other nonprintable or non-ASCII bytes with dots. Hover a character to see its exact byte offset and hex value. Switching views keeps the current offset and search highlights; paging, Jump, and byte-pattern search work in both modes. This is an ASCII display, not a UTF-8 or UTF-16 decoder.
+Switch **Hex / ASCII text** inside the viewer to read the same chunk as regular ASCII text. ASCII text preserves line breaks and tabs, wraps long lines, and replaces other nonprintable or non-ASCII bytes with dots. Hover a character to see its exact byte offset and hex value. Switching views keeps the current offset and search highlights; paging, Jump, and byte-pattern search work in both modes. Choose ASCII, UTF-8, UTF-16 LE, or Windows-1252 from the encoding menu. Decoded modes display the same bounded page; page boundaries may split multibyte characters and show replacement characters. Exact byte hover details and search highlights apply to ASCII and Hex modes. Decoded modes remain read only.
 
 Search accepts 1–256 complete hexadecimal bytes, with optional whitespace (`DE AD BE EF`). Find next starts at the displayed offset for a new pattern and advances through subsequent matches, including overlapping matches. At EOF, the next search starts at the beginning. Progress indicates the current absolute position in the file. Stop cancels further chunks; an in-flight bounded request may finish before cancellation takes effect. Closing the viewer also stops searching. If file size or modification time changes, reopen the viewer before continuing. Byte offsets use safe integers rather than 32-bit arithmetic, supporting files up to JavaScript's safe-integer size limit, subject to filesystem limits.
 
@@ -132,3 +138,26 @@ Click **Information** or press **Ctrl+I** to replace the inactive file panel wit
 
 If the local server restarts while an editor is open, Panevrix reconnects automatically and keeps the unsaved text. If saving returns a real filesystem access denial, the editor keeps the text and offers **Grant access in system permissions…**. This launches a local process to open Windows File Properties, reveal the item in macOS Finder, or open its containing folder on Linux. Grant only the access you intend through the operating system’s permission controls, then retry Save. Panevrix does not automatically change ownership or permissions. A sandbox restriction requires starting the app from your own terminal; file permission changes do not bypass a sandbox.
 
+
+## Documentation and priorities
+
+- [User guide](docs/USER_GUIDE.md): workflows, progress, cancellation, recovery, inspection, logs, and platform differences.
+- [Troubleshooting](docs/TROUBLESHOOTING.md): permissions, stale sessions, ports, slow folders, and failed tasks.
+- [Architecture and API](docs/ARCHITECTURE.md): local security model, modules, endpoints, and limits.
+- [Prioritized roadmap](docs/ROADMAP.md): delivered work and remaining installation, archive, SFTP, and recovery improvements.
+- [Contributing](CONTRIBUTING.md), [security](SECURITY.md), [changelog](CHANGELOG.md), and [publishing](PUBLISHING.md).
+
+## Development and verification
+
+Run these commands from a source checkout (development scripts and tests are not shipped in the npm package).
+
+```sh
+npm run check
+npm test
+npm pack
+npm run benchmark -- 10000
+```
+
+`npm pack` runs syntax checks, tests, and a smoke test against the extracted package. It does not publish. CI covers Windows, Linux, and macOS on Node 20, 22, and 24. The benchmark creates and removes its own temporary fixture and reports local listing time and process memory; it does not measure browser rendering or predict network-drive performance.
+
+The npm tarball is also a portable source distribution: extract it, then run `node package/bin/panevrix.js`. Windows users can launch `package/bin/panevrix.cmd`; macOS/Linux users can run `sh package/bin/panevrix.sh`. These launchers require Node.js 20+. Standalone installers with an embedded runtime are planned; they are not currently supplied.

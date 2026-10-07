@@ -1,0 +1,3 @@
+progress{width:100%;height:9px;accent-color:var(--accent);margin:8px 0 12px} .task-path{font-family:var(--mono);font-size:11px;overflow-wrap:anywhere}.application-logs{white-space:pre-wrap;overflow-wrap:anywhere;height:360px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:14px;font:11px/1.7 var(--mono)}.viewer-tools{flex-wrap:wrap}#task-progress p{overflow-wrap:anywhere}#task-list{max-height:320px;overflow:auto}
+
+.folder-comparison{max-height:320px;overflow:auto}
