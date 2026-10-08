@@ -16,7 +16,7 @@ This prepares a fresh runtime and uses the official VSCE 4.0.0 packager. Packagi
 
 In either editor use Command Palette → **Extensions: Install from VSIX…** and select `extensions/vscode/panevrix-0.1.0.vsix`. Then run **Panevrix: Open File Workspace**. Explorer and editor context menus also offer **Panevrix: Open Here**. This opens a webview editor tab. Opening a file through Panevrix's Enter/default-open action uses the editor; F3/F4 keep the app's internal viewer/editor.
 
-The VS Code and Open VSX publisher identities must be set up separately; the manifest's `coddicat` publisher is intended, not proof of an existing registered publisher. No marketplace publication has been performed.
+The manifest uses the registered Visual Studio Marketplace publisher ID `RodionShlomoSolomonyk`. Open VSX requires separate namespace registration with that same ID. Marketplace publication is still pending upload and validation.
 
 Editor releases use `extension-vX.Y.Z` tags and attach the packaged VSIX to a GitHub release. The npm publishing workflow skips these tags; npm app releases continue to use `vX.Y.Z`. Package with `npm run extension:package` before uploading the asset.
 

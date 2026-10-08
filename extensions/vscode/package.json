@@ -3,7 +3,7 @@
   "displayName": "Panevrix — Dual-panel File Workspace",
   "description": "Commander-style file management, hex inspection, comparisons and background tasks inside VS Code and Cursor.",
   "version": "0.1.0",
-  "publisher": "coddicat",
+  "publisher": "RodionShlomoSolomonyk",
   "license": "MIT",
   "engines": { "vscode": "^1.96.0" },
   "categories": ["Other"],

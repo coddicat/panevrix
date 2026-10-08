@@ -3,7 +3,7 @@ const vscode = require('vscode');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 exports.run = async () => {
-  const extension = vscode.extensions.getExtension('coddicat.panevrix'); assert.ok(extension, 'Extension discovered');
+  const extension = vscode.extensions.getExtension('RodionShlomoSolomonyk.panevrix'); assert.ok(extension, 'Extension discovered');
   const api = await extension.activate(); assert.equal(extension.isActive, true);
   await vscode.commands.executeCommand('panevrix.open'); assert.equal(api.isOpen, true);
   let timer;
