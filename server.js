@@ -225,7 +225,7 @@ function start(port = Number(process.env.PORT) || 3847, options = {}) {
         finally { res.removeListener('close', disconnected); }
       } else {
         const url = new URL(req.url, 'http://localhost');
-        const files = { '/': 'index.html', '/app.js': 'app.js', '/style.css': 'style.css', '/system.css': 'system.css', '/tasks.css': 'tasks.css' };
+        const files = { '/': 'index.html', '/app.js': 'app.js', '/editor-bridge.js': 'editor-bridge.js', '/style.css': 'style.css', '/system.css': 'system.css', '/tasks.css': 'tasks.css' };
         if (!files[url.pathname]) { res.writeHead(404); return res.end('Not found'); }
         let content = await fs.readFile(path.join(publicDir, files[url.pathname]));
         if (url.pathname === '/') content = Buffer.from(content.toString().replace('__TOKEN__', token));

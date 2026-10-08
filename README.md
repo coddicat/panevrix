@@ -32,7 +32,7 @@ panevrix --help
 
 Folder arguments accept relative or absolute paths. Quote paths containing spaces. `--port 0` selects a free port; `--no-open` prints the URL without launching a browser. The `PORT` environment variable also sets the default port. Explicit folder arguments override saved tabs for the respective panel. Without arguments, saved tabs are restored; a fresh session opens the current working directory on the left and your home directory on the right.
 
-To run version 1.1.0 from source, use `npm start` (or `npm start -- --no-open`). There are no dependencies to install. To check a locally packed release, run `npm pack`, then `npm exec --package ./panevrix-1.1.0.tgz -- panevrix --no-open`.
+The current source version is **1.2.0 (unreleased)**; npm latest is **1.1.0**. To run the source, use `npm start` (or `npm start -- --no-open`). There are no dependencies to install. To check a locally packed release, run `npm pack`, then `npm exec --package ./panevrix-1.2.0.tgz -- panevrix --no-open`.
 
 See [PUBLISHING.md](PUBLISHING.md) in the source repository for GitHub and npm release instructions.
 
@@ -161,3 +161,13 @@ npm run benchmark -- 10000
 `npm pack` runs syntax checks, tests, and a smoke test against the extracted package. It does not publish. CI covers Windows, Linux, and macOS on Node 20, 22, and 24. The benchmark creates and removes its own temporary fixture and reports local listing time and process memory; it does not measure browser rendering or predict network-drive performance.
 
 The npm tarball is also a portable source distribution: extract it, then run `node package/bin/panevrix.js`. Windows users can launch `package/bin/panevrix.cmd`; macOS/Linux users can run `sh package/bin/panevrix.sh`. These launchers require Node.js 20+. Standalone installers with an embedded runtime are planned; they are not currently supplied.
+
+## VS Code and Cursor
+
+An initial extension opens Panevrix directly in an editor tab, with workspace paths, native file opening, task progress and logs. It requires a trusted workspace and uses the editor's Node extension host, so no separate server or browser is needed.
+
+```sh
+npm run extension:package
+```
+
+In either editor choose **Extensions: Install from VSIX…**, select `extensions/vscode/panevrix-0.1.0.vsix`, then run **Panevrix: Open File Workspace**. Packaging requires Node 22+; the running extension requires an editor with Node 20+. See [extension installation and limits](docs/EDITOR_EXTENSION.md). Extension 0.1.0 is available for local testing; it is not published to a marketplace.

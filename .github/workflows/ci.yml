@@ -29,3 +29,18 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm pack
+  extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm run extension:package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: panevrix-vscode-cursor-extension
+          path: extensions/vscode/*.vsix
+          if-no-files-found: error

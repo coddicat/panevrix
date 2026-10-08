@@ -1,0 +1,32 @@
+{
+  "name": "panevrix",
+  "displayName": "Panevrix — Dual-panel File Workspace",
+  "description": "Commander-style file management, hex inspection, comparisons and background tasks inside VS Code and Cursor.",
+  "version": "0.1.0",
+  "publisher": "coddicat",
+  "license": "MIT",
+  "engines": { "vscode": "^1.96.0" },
+  "categories": ["Other"],
+  "keywords": ["file manager", "dual panel", "hex", "commander", "cursor"],
+  "repository": { "type": "git", "url": "https://github.com/coddicat/panevrix.git" },
+  "homepage": "https://github.com/coddicat/panevrix",
+  "bugs": { "url": "https://github.com/coddicat/panevrix/issues" },
+  "main": "./extension.js",
+  "extensionKind": ["workspace"],
+  "activationEvents": ["onCommand:panevrix.open", "onCommand:panevrix.openHere"],
+  "capabilities": {
+    "untrustedWorkspaces": { "supported": false, "description": "Panevrix can modify files and execute shell commands; a trusted workspace is required." },
+    "virtualWorkspaces": { "supported": false, "description": "Panevrix requires a real filesystem in the extension host." }
+  },
+  "contributes": {
+    "commands": [
+      { "command": "panevrix.open", "title": "Open File Workspace", "category": "Panevrix" },
+      { "command": "panevrix.openHere", "title": "Open Here", "category": "Panevrix" },
+      { "command": "panevrix.showLogs", "title": "Show Extension Logs", "category": "Panevrix" }
+    ],
+    "menus": {
+      "explorer/context": [{ "command": "panevrix.openHere", "when": "isWorkspaceTrusted && (resourceScheme == file || resourceScheme == vscode-remote)", "group": "navigation@90" }],
+      "editor/title/context": [{ "command": "panevrix.openHere", "when": "isWorkspaceTrusted && (resourceScheme == file || resourceScheme == vscode-remote)", "group": "navigation@90" }]
+    }
+  }
+}

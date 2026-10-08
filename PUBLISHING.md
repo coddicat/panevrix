@@ -2,7 +2,7 @@
 
 Public repository: https://github.com/coddicat/panevrix
 
-**Current version: 1.1.0. Publishing requires release authorization; ordinary source pushes do not publish.**
+**Current source: 1.2.0 (unreleased); npm latest: 1.1.0. Publishing requires release authorization; ordinary source pushes do not publish.**
 
 Every push and pull request runs checks on Windows, Linux, and macOS with Node.js 20, 22, and 24. Publishing a stable GitHub release runs the same checks for its tag, then publishes to npm through `.github/workflows/publish.yml`.
 
@@ -23,14 +23,14 @@ No npm token or repository secret is needed. Current npm publisher configuration
 For later releases, increase the version on `main`, push its commit and tag, then publish the matching GitHub release:
 
 ```sh
-# Version 1.1.0 is already set in the source; commit and push verified changes.
-git tag v1.1.0
+# Only after release authorization and successful verification:
+git tag v1.2.0
 git push origin main
 git push origin --tags
-gh release create v1.1.0 --title "Panevrix 1.1.0" --generate-notes
+gh release create v1.2.0 --title "Panevrix 1.2.0" --generate-notes
 ```
 
-Replace `v1.1.0` with the actual version. The workflow requires a stable `vX.Y.Z` tag matching `package.json` and a commit in `main` history. It tests all nine OS/Node combinations, builds and smoke-tests the archive, publishes with OIDC and provenance, and attaches the archive to the GitHub release. Ordinary pushes and pull requests do not publish. The workflow also supports manual dispatch with an existing tag, for retrying after configuration changes. Published npm versions cannot be reused.
+Replace `v1.2.0` with the actual version. The workflow requires a stable `vX.Y.Z` tag matching `package.json` and a commit in `main` history. It tests all nine OS/Node combinations, builds and smoke-tests the archive, publishes with OIDC and provenance, and attaches the archive to the GitHub release. Ordinary pushes and pull requests do not publish. The workflow also supports manual dispatch with an existing tag, for retrying after configuration changes. Published npm versions cannot be reused.
 
 ## GitHub
 
@@ -78,3 +78,7 @@ Both routes run a local Node server and open your browser. Files remain on your 
 ```sh
 panevrix . ../another-folder --port 0
 ```
+
+## Editor extension
+
+`npm run extension:package` creates a local VSIX; it never publishes. See [editor extension documentation](docs/EDITOR_EXTENSION.md) for separate Marketplace/Open VSX publisher setup and testing requirements.

@@ -25,7 +25,7 @@ async function verify() {
       child.on('exit', code => { clearTimeout(timer); reject(Error(`Packed CLI exited (${code}): ${error}`)); });
     });
     const response = await fetch(url); assert.equal(response.status, 200); const html = await response.text(); assert.match(html, /Panevrix/);
-    for (const asset of ['app.js', 'style.css', 'system.css', 'tasks.css']) assert.equal((await fetch(`${url}/${asset}`)).status, 200);
+    for (const asset of ['app.js', 'editor-bridge.js', 'style.css', 'system.css', 'tasks.css']) assert.equal((await fetch(`${url}/${asset}`)).status, 200);
     const token = html.match(/commander-token" content="([^"]+)"/)[1];
     const headers = { 'X-Commander-Token': token };
     const config = await (await fetch(url + '/api/config', { method: 'POST', headers })).json(); assert.equal(config.cwd, root);

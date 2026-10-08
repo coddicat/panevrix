@@ -1,5 +1,8 @@
 node_modules/
 *.tgz
+*.vsix
+extensions/vscode/runtime/
+extensions/vscode/LICENSE
 *.log
 .env
 .env.*

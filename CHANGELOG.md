@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0 — Unreleased
+
+- Initial VS Code/Cursor extension 0.1.0 with an embedded dual-panel workspace, native editor opening, workspace trust, dirty-document guards, and Output logs.
+- Shared browser/extension UI with cancelable message transport, nonce CSP, and no localhost server in extension mode.
+- VSIX build tooling, CI artifact, and editor-host smoke tests.
+
+This source version and the extension are not published. npm latest remains 1.1.0.
+
 ## 1.1.0
 
 - Background task queue for copy/move with byte/item progress, cancellation and stop/skip/keep-both conflicts.

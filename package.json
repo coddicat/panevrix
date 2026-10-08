@@ -1,6 +1,6 @@
 {
   "name": "panevrix",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Keyboard-first dual-panel local file manager with hex and ASCII viewing",
   "license": "MIT",
   "repository": { "type": "git", "url": "git+https://github.com/coddicat/panevrix.git" },
@@ -11,9 +11,12 @@
   "keywords": ["file-manager", "commander", "dual-pane", "hex-viewer", "cli", "local"],
   "scripts": {
     "start": "node bin/panevrix.js",
+    "pretest": "node scripts/build-extension.js",
     "test": "node --test",
     "benchmark": "node scripts/benchmark.js",
-    "check": "node --check server.js && node --check lib/operations.js && node --check lib/logging.js && node --check lib/system.js && node --check bin/panevrix.js && node --check public/app.js",
+    "extension:build": "node scripts/build-extension.js",
+    "extension:package": "npm run extension:build && cd extensions/vscode && npx --yes @vscode/vsce@4.0.0 package --no-dependencies",
+    "check": "node --check server.js && node --check public/editor-bridge.js && node --check extensions/vscode/bridge.js && node --check extensions/vscode/extension.js && node --check lib/operations.js && node --check lib/logging.js && node --check lib/system.js && node --check bin/panevrix.js && node --check public/app.js",
     "prepack": "npm run check && npm test",
     "postpack": "node scripts/verify-package.js"
   },

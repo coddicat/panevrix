@@ -43,6 +43,7 @@ function recordActivity(label, phase, detail = '', duration = 0) {
 }
 async function api(route, data = {}, retried = false, signal) {
   signal?.throwIfAborted();
+  if (globalThis.panevrixBridge) return globalThis.panevrixBridge.request(route, data, signal);
   const response = await fetch('/api/' + route, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Commander-Token': token }, body: JSON.stringify(data), signal });
   const raw = await response.text(); let result;
   try { result = JSON.parse(raw); } catch { result = { error: response.status === 403 ? 'This app session has expired. Reload Panevrix to reconnect.' : `The server returned an unexpected response (HTTP ${response.status}).`, code: response.status === 403 && raw.trim() === 'Forbidden' ? 'SESSION_EXPIRED' : 'INVALID_RESPONSE' }; }
