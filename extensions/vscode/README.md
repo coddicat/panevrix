@@ -4,6 +4,8 @@ Open a Commander-style dual-panel file workspace inside your editor. Includes co
 
 ## Install locally
 
+Download `panevrix-0.1.0.vsix` from the [editor extension release](https://github.com/coddicat/panevrix/releases/tag/extension-v0.1.0), then use **Extensions: Install from VSIX…** in VS Code or Cursor. Run **Panevrix: Open File Workspace** from the Command Palette after installation.
+
 Build from the repository root:
 
 ```sh
@@ -11,7 +13,7 @@ npm run extension:build
 npm run extension:package
 ```
 
-In VS Code or Cursor, run **Extensions: Install from VSIX…** from the Command Palette, then choose `extensions/vscode/panevrix-0.1.0.vsix`. Reload the editor if prompted. This initial extension is not published to a marketplace. The `coddicat` publisher ID in the manifest must be registered/verified before marketplace publication.
+In VS Code or Cursor, run **Extensions: Install from VSIX…** from the Command Palette, then choose `extensions/vscode/panevrix-0.1.0.vsix`. Reload the editor if prompted. Marketplace listings are pending publisher setup; the GitHub VSIX download is available separately.
 
 ## Open Panevrix
 
