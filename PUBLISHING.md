@@ -2,7 +2,7 @@
 
 Public repository: https://github.com/coddicat/panevrix
 
-**Current source: 1.1.0 (unreleased). npm publication is paused. Do not create a release or dispatch publishing until publication is explicitly resumed.**
+**Current version: 1.1.0. Publishing requires release authorization; ordinary source pushes do not publish.**
 
 Every push and pull request runs checks on Windows, Linux, and macOS with Node.js 20, 22, and 24. Publishing a stable GitHub release runs the same checks for its tag, then publishes to npm through `.github/workflows/publish.yml`.
 

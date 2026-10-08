@@ -2,7 +2,7 @@
 
 Panevrix targets developers and advanced users who want a keyboard-driven file workspace and local system inspection. Reliability and responsiveness take precedence over feature count. This is a plan, not a release schedule.
 
-| Priority | Objective | Delivered in unreleased 1.1.0 | Remaining work / acceptance criteria |
+| Priority | Objective | Delivered in 1.1.0 | Remaining work / acceptance criteria |
 | --- | --- | --- | --- |
 | P0 | Trustworthy operations | Queued tasks, byte/item progress, cancellation, conflict policies, exclusive destination creation, partial-copy cleanup, source-change checks, copy-before-remove moves | Durable task journals and restart recovery; stronger protection against concurrent directory replacement; fault injection for disk-full and disconnected volumes; atomic editor saves |
 | P0 | Visibility and diagnosis | CLI startup/request/error/task logs; live application log window; task history and reopening progress | Optional file logging, retention controls, export with privacy review; cancelable shell execution |
@@ -15,7 +15,7 @@ Panevrix targets developers and advanced users who want a keyboard-driven file w
 
 ## Release gate
 
-Before releasing 1.1.0: syntax, file-operation/recovery tests, package smoke test and the Windows/Linux/macOS matrix must pass. Review documented safety limits. Perform browser verification of task progress, cancel, background navigation, modal errors, and virtualized keyboard navigation. npm publication remains paused until explicitly resumed; a source push alone never publishes.
+Before releasing 1.1.0: syntax, file-operation/recovery tests, package smoke test and the Windows/Linux/macOS matrix must pass. Review documented safety limits. Perform browser verification of task progress, cancel, background navigation, modal errors, and virtualized keyboard navigation. Publication requires explicit release authorization; a source push alone never publishes.
 
 ## Product position
 

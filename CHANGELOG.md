@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.0 — Unreleased
+## 1.1.0
 
 - Background task queue for copy/move with byte/item progress, cancellation and stop/skip/keep-both conflicts.
 - Partial-copy cleanup, source identity/change checks and copy-before-remove moves.
@@ -11,7 +11,7 @@
 - Live application logs in the CLI and browser.
 - Portable source launchers, reproducible benchmark, user/troubleshooting/API/security/contributor/release documentation and prioritized roadmap.
 
-npm publication is paused. These changes are available from source only.
+
 
 ## 1.0.0
 

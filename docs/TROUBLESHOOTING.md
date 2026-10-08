@@ -11,7 +11,7 @@
 | Progress stays at scanning | The source tree is still being enumerated. Cancel requests are honored between OS calls. Byte totals are unknown until scanning finishes. |
 | Transfer fails | Read the task error, completed count and any retained cleanup paths. Inspect source and destination before retrying. Free disk space, disconnected volumes, changed sources and conflicting names can stop a task. |
 | Missing progress after closing a window | Open Tasks / Ctrl+J. A server restart discards history; inspect destination files before retrying. |
-| New features missing from `npx` | Source 1.1.0 is unreleased. `npx panevrix@latest` runs the published version; use `npm start` in the source checkout for these changes. |
+| New features missing from `npx` | Check `panevrix --version`. Use `npx panevrix@1.1.0` to request this release explicitly; a globally installed older version may need updating. |
 | Browser intercepts shortcut | Use the visible toolbar action; do not rely on Alt+function-key shortcuts on Windows. |
 | Blank process details / window names | OS permissions and collectors vary. Windows exposes process window titles; Unix tools report available process information. |
 | Strange decoded text | Select the correct encoding. Pages can split multibyte characters. Hex preserves exact bytes; the editor handles UTF-8 only. |

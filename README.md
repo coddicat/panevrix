@@ -32,7 +32,7 @@ panevrix --help
 
 Folder arguments accept relative or absolute paths. Quote paths containing spaces. `--port 0` selects a free port; `--no-open` prints the URL without launching a browser. The `PORT` environment variable also sets the default port. Explicit folder arguments override saved tabs for the respective panel. Without arguments, saved tabs are restored; a fresh session opens the current working directory on the left and your home directory on the right.
 
-Source version **1.1.0 is unreleased**; npm publication is paused. To run the latest source changes, use `npm start` (or `npm start -- --no-open`). There are no dependencies to install. To check a locally packed release, run `npm pack`, then `npm exec --package ./panevrix-1.1.0.tgz -- panevrix --no-open`.
+To run version 1.1.0 from source, use `npm start` (or `npm start -- --no-open`). There are no dependencies to install. To check a locally packed release, run `npm pack`, then `npm exec --package ./panevrix-1.1.0.tgz -- panevrix --no-open`.
 
 See [PUBLISHING.md](PUBLISHING.md) in the source repository for GitHub and npm release instructions.
 
